@@ -362,6 +362,13 @@ function songView(id) {
           </div>
           <button class="pill ${isSaved ? "is-on" : ""}" id="save" aria-pressed="${isSaved}">${isSaved ? "Saved" : "Save"}</button>
           <button class="pill" id="print">Print</button>
+          ${
+            importedSong
+              ? ""
+              : `<a class="pill" href="#/import?title=${encodeURIComponent(song.title)}&artist=${encodeURIComponent(
+                  song.artist,
+                )}&key=${encodeURIComponent(song.key)}&type=${encodeURIComponent(song.type)}">Add a tab for this song</a>`
+          }
         </div>
 
         <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span> Capo: ${esc(
@@ -393,6 +400,14 @@ function savedView() {
 // --- import -------------------------------------------------------------
 
 function importView() {
+  // A song page can hand us its title/artist/key so pasting is one step.
+  const params = new URLSearchParams((location.hash.split("?")[1] || "").trim());
+  const pre = (name, fallback = "") => esc(params.get(name) || fallback);
+  const type = params.get("type") || "tabs";
+  const typeOptions = ["tabs", "chords", "ukulele", "bass"]
+    .map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${TYPE_LABEL[t]}</option>`)
+    .join("");
+
   return `
     <main class="ws">
       <section class="hero">
@@ -402,21 +417,16 @@ function importView() {
 
       <form class="import-form" id="import-form">
         <div class="field-row">
-          <label>Title <input name="title" required placeholder="Can't Stop" /></label>
-          <label>Artist <input name="artist" placeholder="Red Hot Chili Peppers" /></label>
+          <label>Title <input name="title" required placeholder="Can't Stop" value="${pre("title")}" /></label>
+          <label>Artist <input name="artist" placeholder="Red Hot Chili Peppers" value="${pre("artist")}" /></label>
         </div>
         <div class="field-row">
           <label>Type
-            <select name="type">
-              <option value="tabs">Tab</option>
-              <option value="chords">Chords</option>
-              <option value="ukulele">Ukulele</option>
-              <option value="bass">Bass</option>
-            </select>
+            <select name="type">${typeOptions}</select>
           </label>
-          <label>Key <input name="key" placeholder="Em" size="6" /></label>
-          <label>Tuning <input name="tuning" placeholder="E A D G B E" /></label>
-          <label>Capo <input name="capo" placeholder="No capo" /></label>
+          <label>Key <input name="key" placeholder="Em" size="6" value="${pre("key")}" /></label>
+          <label>Tuning <input name="tuning" placeholder="E A D G B E" value="${pre("tuning", "E A D G B E")}" /></label>
+          <label>Capo <input name="capo" placeholder="No capo" value="${pre("capo", "No capo")}" /></label>
         </div>
         <label class="body-field">Tab text
           <textarea name="body" required rows="14" spellcheck="false"
