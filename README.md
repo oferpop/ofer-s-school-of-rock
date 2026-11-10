@@ -6,6 +6,9 @@ and the in-app browser. It reproduces that reader's layout and behaviour, not
 its content: all sample songs are traditional / public-domain material written
 for this project.
 
+**Live static copy:** https://oferpop.github.io/ofer-s-school-of-rock/ — guest
+mode only (no accounts/comments; those need `server.py`).
+
 The **Pro** layer adds playlists, a metronome, practice tracking, tab export and
 backups. Like the reader, it is client-side only: there is no account, no server
 and nothing leaves the browser.

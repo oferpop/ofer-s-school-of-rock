@@ -1957,6 +1957,15 @@ function wireComments(song) {
   const count = document.getElementById("comment-count");
   if (!list) return;
 
+  // The Pages build has no accounts server, so do not request a thread that
+  // cannot exist.
+  if (document.querySelector('meta[name="osr-static"]')) {
+    list.innerHTML = `<p class="dim">Comments are stored by the local accounts server. This static copy runs in guest mode.</p>`;
+    if (form) form.hidden = true;
+    if (login) login.hidden = true;
+    return;
+  }
+
   const paint = (data) => {
     const items = data.comments || [];
     if (count) count.textContent = items.length ? `(${items.length})` : "";
