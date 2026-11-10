@@ -206,7 +206,7 @@ window.addEventListener("hashchange", () => {
   stopMetronome();
   stopPractice();
   stopTuner();
-  stopPlayer({ keepOpen: true });
+  stopPlayer();
   state.picker = "";
   state.backupNote = "";
   state.showVideo = false;
@@ -771,7 +771,6 @@ function songView(id) {
         }
 
         <div class="toolbar">
-          <button class="pill primary" id="play-tab"><span class="ico">▶</span> Play tab</button>
           <button class="pill primary" id="autoscroll" aria-pressed="${state.playing}">
             <span class="ico">${state.playing ? "❚❚" : "▶"}</span> Autoscroll
           </button>
@@ -1100,11 +1099,11 @@ function playerBar() {
   const total = playerState.parsed ? clock(playerState.parsed.duration) : "0:00";
   const playing = playerState.status === "playing";
   return `
-    <div class="player-bar" id="player-bar" ${playerState.open ? "" : "hidden"}>
+    <div class="player-bar" id="player-bar">
       <span class="pb-label">Play</span>
       <button class="pill primary" id="player-toggle" aria-pressed="${playing}">
         <span class="ico">${playing ? "❚❚" : "▶"}</span> ${
-          playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play"
+          playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play the tab"
         }
       </button>
       <button class="pill" id="player-stop">Stop</button>
@@ -1125,13 +1124,12 @@ function playerBar() {
 function updatePlayerBar() {
   const bar = document.getElementById("player-bar");
   if (!bar) return;
-  bar.hidden = !playerState.open;
 
   const toggle = document.getElementById("player-toggle");
   if (toggle) {
     const playing = playerState.status === "playing";
     toggle.innerHTML = `<span class="ico">${playing ? "❚❚" : "▶"}</span> ${
-      playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play"
+      playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play the tab"
     }`;
     toggle.setAttribute("aria-pressed", String(playing));
   }
@@ -1176,17 +1174,15 @@ function highlightRange(range) {
   }
 }
 
-function stopPlayer({ keepOpen = false } = {}) {
+function stopPlayer() {
   tabPlayer.stop();
   stopTicker();
   highlightRange(null);
   playerState.status = "stopped";
-  if (!keepOpen) playerState.open = false;
   updatePlayerBar();
 }
 
 async function startPlayer(song, { from = 0, fraction = null } = {}) {
-  playerState.open = true;
   playerState.songId = song.id;
 
   const parsed = parseSong(song, {
@@ -1262,14 +1258,10 @@ function changeBpm(delta, song) {
 }
 
 function wirePlayer(song) {
-  const button = document.getElementById("play-tab");
-  if (!button) return;
+  const toggle = document.getElementById("player-toggle");
+  if (!toggle) return;
 
-  button.addEventListener("click", () => {
-    playerState.open = true;
-    togglePlayer(song);
-  });
-  document.getElementById("player-toggle").addEventListener("click", () => togglePlayer(song));
+  toggle.addEventListener("click", () => togglePlayer(song));
   document.getElementById("player-stop").addEventListener("click", () => stopPlayer());
   document.getElementById("player-bpm-down").addEventListener("click", () => changeBpm(-5, song));
   document.getElementById("player-bpm-up").addEventListener("click", () => changeBpm(5, song));
@@ -1839,11 +1831,19 @@ function render() {
   else if (r.view === "auth") body = authView(r.mode);
   else body = exploreView();
 
-  app.innerHTML = header() + body;
+  app.innerHTML = header() + body + siteFooter();
   wire();
   syncPractice(r.view === "song" ? r.id : null);
 
   if (r.view === "song") window.scrollTo(0, scrollY);
+}
+
+function siteFooter() {
+  return `
+    <footer class="site-footer">
+      <span>Ofer's School of Rock Pro</span>
+      <span class="dim">build 2026-11-10 · tab player</span>
+    </footer>`;
 }
 
 function wire() {
