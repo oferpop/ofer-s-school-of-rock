@@ -180,7 +180,7 @@ function route() {
   if (parts[0] === "learn") return { view: "learn" };
   if (parts[0] === "login") return { view: "auth", mode: "login" };
   if (parts[0] === "signup") return { view: "auth", mode: "signup" };
-  return { view: "explore", q: params.get("q") || state.query };
+  return { view: "explore", q: params.get("q") || state.query, t: params.get("t") || null };
 }
 
 function go(path) {
@@ -199,8 +199,17 @@ window.addEventListener("hashchange", () => {
   state.videoError = "";
   state.transpose = 0;
   state.simplify = false;
+  applyRouteType();
   render();
 });
+
+// The instrument links carry their filter in the hash (`#/?t=bass`); chip
+// clicks only change state, so this runs on navigation, not on every render.
+function applyRouteType() {
+  const raw = location.hash.split("?")[1] || "";
+  const type = new URLSearchParams(raw).get("t");
+  state.type = type || "all";
+}
 
 // --- chrome -------------------------------------------------------------
 
@@ -244,7 +253,9 @@ function header() {
 function filteredSongs() {
   const q = state.query.trim().toLowerCase();
   let list = catalogue().filter((s) => {
-    const matchesType = state.type === "all" || s.type === state.type;
+    const matchesType =
+      state.type === "all" ||
+      (state.type === "guitar" ? s.type === "chords" || s.type === "tabs" : s.type === state.type);
     const matchesQuery =
       !q ||
       s.title.toLowerCase().includes(q) ||
@@ -295,6 +306,36 @@ function popularSongs() {
     .slice(0, 6);
 }
 
+function featuredSong() {
+  return [...songs].sort((a, b) => b.rating - a.rating || b.votes - a.votes)[0];
+}
+
+function typeCount(type) {
+  if (type === "guitar") return songs.filter((s) => s.type === "chords" || s.type === "tabs").length;
+  return songs.filter((s) => s.type === type).length;
+}
+
+function featuredBlock() {
+  const song = featuredSong();
+  if (!song) return "";
+  return `
+    <section class="featured">
+      <div class="featured-info">
+        <p class="featured-kicker"><span class="badge">Featured</span> top rated in the catalog</p>
+        <h2><a href="${songHref(song)}">${esc(song.title)}</a></h2>
+        <p class="dim featured-meta">${esc(song.artist)} · Key ${esc(song.key)} · ${esc(song.tuning)} ·
+          <span class="star">★</span> ${song.rating.toFixed(1)}</p>
+        <div class="pl-actions">
+          <a class="pill primary" href="${songHref(song)}"><span class="ico">▶</span> Open in reader</a>
+          <a class="pill" href="#/artist/${encodeURIComponent(artistSlug(song.artist))}">More by ${esc(
+            song.artist,
+          )}</a>
+        </div>
+      </div>
+      <div class="featured-sheet" aria-hidden="true">${renderSheet(song, 16)}</div>
+    </section>`;
+}
+
 function exploreView() {
   const list = filteredSongs();
   const types = ["all", "chords", "tabs", "ukulele", "bass"];
@@ -310,7 +351,15 @@ function exploreView() {
                  value="${esc(state.query)}" aria-label="Search songs, artists or keys" />
           <button type="submit" class="pill primary">Search</button>
         </form>
+        <nav class="instrument-links" aria-label="Browse by instrument">
+          <a href="#/?t=guitar">Guitar <span class="count">${typeCount("guitar")}</span></a>
+          <a href="#/?t=bass">Bass <span class="count">${typeCount("bass")}</span></a>
+          <a href="#/?t=ukulele">Ukulele <span class="count">${typeCount("ukulele")}</span></a>
+          <a href="#/?t=all">All tabs</a>
+        </nav>
       </section>
+
+      ${featuredBlock()}
 
       <section class="popular">
         <div class="popular-head">
@@ -368,8 +417,9 @@ function exploreView() {
 
 // --- sheet --------------------------------------------------------------
 
-function renderSheet(song) {
-  const lines = song.body.split("\n");
+function renderSheet(song, maxLines = 0) {
+  const allLines = song.body.split("\n");
+  const lines = maxLines ? allLines.slice(0, maxLines) : allLines;
   const chordTokens = chordTokensByLine(song.body);
   const out = [];
   let inTabBlock = false;
@@ -2247,5 +2297,6 @@ function toggleSave(id) {
   render();
 }
 
+applyRouteType();
 render();
 initAuth();

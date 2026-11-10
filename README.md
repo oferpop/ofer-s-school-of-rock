@@ -41,6 +41,8 @@ The app also runs on any static host with **guest mode only**: without
 ## What's implemented
 
 **Catalog (`#/`)**
+- Search-first landing: a hero search, guitar/bass/ukulele instrument links, a
+  featured (top rated) tab with an excerpt, and a "Popular right now" rail
 - Song catalog with search across title / artist / key
 - Type filters (Chords, Tab, Ukulele, Bass) and sort by rating or views
 - Cards with rating, vote count, views, key and difficulty
@@ -228,8 +230,9 @@ it stays in your browser.
 - Playlists, saved tabs and stats are per account on that server only
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only
-- Catalog is 24 hand-written songs — 14 public-domain pieces, three original
-  OSR solo studies (E minor rock, 12-bar blues in A, country in G), and seven
+- Catalog is 26 hand-written songs — 14 public-domain pieces, three original
+  OSR solo studies (E minor rock, 12-bar blues in A, country in G), two bass
+  arrangements (House of the Rising Sun and a blues-in-A study), and seven
   harmony-and-structure charts (The Way Things Go, plus Can't Stop, Under the
   Bridge, Californication, Scar Tissue, Otherside and Dani California). The
   RHCP entries carry chords, sections and playing notes only: no lyrics, and
