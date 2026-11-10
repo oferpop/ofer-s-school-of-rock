@@ -41,6 +41,22 @@ HTTP, so opening `index.html` from the filesystem will not work.
 
 **My tabs (`#/saved`)** — everything saved on this device.
 
+**Import (`#/import`)**
+- Paste any chord sheet or ASCII tab, give it a title, artist, key, tuning and
+  capo, and it opens in the full reader — transpose, diagrams, simplify,
+  autoscroll and print all work on it
+- Imported tabs are listed in the catalog with an `Imported` badge, sort and
+  search alongside the shipped ones, and can be deleted from the reader
+- They live in `localStorage` (`osr.imported.v1`) and never touch the repo, so
+  material you have access to stays on your machine
+
+## Content policy
+
+The catalog holds public-domain songs plus chord charts and original studies
+written for this project. Third-party lyrics and note-for-note transcriptions
+are deliberately absent — that is what `#/import` is for: you supply the text,
+it stays in your browser.
+
 ## How the interesting parts work
 
 `js/chords.js`

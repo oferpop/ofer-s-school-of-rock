@@ -9,6 +9,11 @@ import {
 } from "./chords.js";
 
 const SAVED_KEY = "ugclone.saved.v1";
+const IMPORTED_KEY = "osr.imported.v1";
+
+// Tabs pasted by the reader live only in this browser — they are never part of
+// the shipped catalog, so the repo carries no third-party transcriptions.
+let imported = loadImported();
 
 const state = {
   query: "",
@@ -38,6 +43,30 @@ function persistSaved() {
   localStorage.setItem(SAVED_KEY, JSON.stringify([...state.saved]));
 }
 
+function loadImported() {
+  try {
+    const list = JSON.parse(localStorage.getItem(IMPORTED_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistImported() {
+  localStorage.setItem(IMPORTED_KEY, JSON.stringify(imported));
+}
+
+// Everything the reader can open: pasted tabs first, then the shipped catalog.
+function catalogue() {
+  return [...imported, ...songs];
+}
+
+function findSong(id) {
+  return imported.find((s) => s.id === id) || byId(id);
+}
+
+const isImported = (song) => Boolean(song?.imported);
+
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -50,8 +79,9 @@ function route() {
   const [path, qs] = raw.split("?");
   const params = new URLSearchParams(qs || "");
   const parts = path.split("/").filter(Boolean);
-  if (parts[0] === "song" && parts[1]) return { view: "song", id: parts[1] };
+  if (parts[0] === "song" && parts[1]) return { view: "song", id: decodeURIComponent(parts[1]) };
   if (parts[0] === "saved") return { view: "saved" };
+  if (parts[0] === "import") return { view: "import" };
   return { view: "explore", q: params.get("q") || state.query };
 }
 
@@ -78,6 +108,7 @@ function header() {
       <nav class="main-nav">
         <a href="#/" class="${route().view === "explore" ? "is-active" : ""}">Tabs</a>
         <a href="#/saved" class="${route().view === "saved" ? "is-active" : ""}">My tabs</a>
+        <a href="#/import" class="${route().view === "import" ? "is-active" : ""}">Import</a>
         <a href="#" class="is-muted" aria-disabled="true">Courses</a>
         <a href="#" class="is-muted" aria-disabled="true">Articles</a>
         <a href="#" class="is-muted" aria-disabled="true">Forums</a>
@@ -94,7 +125,7 @@ function header() {
 
 function filteredSongs() {
   const q = state.query.trim().toLowerCase();
-  let list = songs.filter((s) => {
+  let list = catalogue().filter((s) => {
     const matchesType = state.type === "all" || s.type === state.type;
     const matchesQuery =
       !q ||
@@ -114,17 +145,22 @@ function songCard(song) {
   const isSaved = state.saved.has(song.id);
   return `
     <article class="card" data-id="${song.id}">
-      <a class="card-main" href="#/song/${song.id}">
+      <a class="card-main" href="#/song/${encodeURIComponent(song.id)}">
         <div class="card-head">
           <h3>${esc(song.title)}</h3>
           <span class="badge">${TYPE_LABEL[song.type] || "Tab"}</span>
+          ${isImported(song) ? `<span class="badge badge-import">Imported</span>` : ""}
         </div>
         <p class="card-artist">${esc(song.artist)}</p>
         <ul class="meta">
-          <li><span class="star">★</span> ${song.rating.toFixed(1)} <span class="dim">(${fmt(song.votes)})</span></li>
+          ${
+            isImported(song)
+              ? `<li class="dim">${song.body.split("\n").length} lines</li><li class="dim">Key ${esc(song.key)}</li>`
+              : `<li><span class="star">★</span> ${song.rating.toFixed(1)} <span class="dim">(${fmt(song.votes)})</span></li>
           <li class="dim">${fmt(song.views)} views</li>
           <li class="dim">Key ${esc(song.key)}</li>
-          <li class="dim difficulty-${song.difficulty}">${song.difficulty}</li>
+          <li class="dim difficulty-${song.difficulty}">${song.difficulty}</li>`
+          }
         </ul>
       </a>
       <button class="save-btn ${isSaved ? "is-saved" : ""}" data-save="${song.id}"
@@ -141,7 +177,9 @@ function exploreView() {
     <main class="ws">
       <section class="hero">
         <h1>Explore tab catalog</h1>
-        <p class="hero-sub">${fmt(songs.length)} songs · chords, tabs and ukulele arrangements</p>
+        <p class="hero-sub">${fmt(songs.length)} songs · chords, tabs and ukulele arrangements${
+          imported.length ? ` · ${imported.length} imported tab${imported.length === 1 ? "" : "s"}` : ""
+        }</p>
       </section>
 
       <div class="filters">
@@ -246,11 +284,12 @@ function transposeKey(key) {
 }
 
 function songView(id) {
-  const song = byId(id);
+  const song = findSong(id);
   if (!song) {
     return `<main class="ws"><p class="empty">That tab does not exist. <a href="#/">Back to the catalog</a>.</p></main>`;
   }
-  const versions = versionsOf(song);
+  const importedSong = isImported(song);
+  const versions = importedSong ? [] : versionsOf(song);
   const isSaved = state.saved.has(song.id);
   return `
     <main class="ws song-layout">
@@ -278,17 +317,31 @@ function songView(id) {
             : ""
         }
         <div class="rail-note">
-          <strong>About the author</strong>
-          <p>${esc(song.author)} — ${fmt(song.saves)} saves, ${fmt(song.comments)} comments.</p>
+          ${
+            importedSong
+              ? `<strong>Imported tab</strong>
+                 <p>Stored in this browser only — not part of the catalog in the repo.</p>
+                 <button class="pill danger" id="delete-import">Delete this tab</button>`
+              : `<strong>About the author</strong>
+                 <p>${esc(song.author)} — ${fmt(song.saves)} saves, ${fmt(song.comments)} comments.</p>`
+          }
         </div>
       </aside>
 
       <article class="song">
         <h1 class="song-title">${esc(song.title)} ${TYPE_LABEL[song.type] || "Tab"} <span>by</span> ${esc(song.artist)}</h1>
-        <p class="stats">${fmt(song.views)} views · ${fmt(song.saves)} saves · ${fmt(song.comments)} comments</p>
+        ${
+          importedSong
+            ? `<p class="stats">Imported on this device · ${song.body.split("\n").length} lines</p>`
+            : `<p class="stats">${fmt(song.views)} views · ${fmt(song.saves)} saves · ${fmt(song.comments)} comments</p>`
+        }
         <p class="byline">
-          Author: ${esc(song.author)} · <span class="difficulty-${song.difficulty}">${song.difficulty}</span>
-          · <span class="star">★</span> ${song.rating.toFixed(1)}
+          ${
+            importedSong
+              ? `Pasted into this browser · <span class="badge badge-import">Imported</span>`
+              : `Author: ${esc(song.author)} · <span class="difficulty-${song.difficulty}">${song.difficulty}</span>
+          · <span class="star">★</span> ${song.rating.toFixed(1)}`
+          }
         </p>
 
         <div class="toolbar">
@@ -324,7 +377,7 @@ function songView(id) {
 }
 
 function savedView() {
-  const list = songs.filter((s) => state.saved.has(s.id));
+  const list = catalogue().filter((s) => state.saved.has(s.id));
   return `
     <main class="ws">
       <section class="hero">
@@ -334,6 +387,53 @@ function savedView() {
       <div class="results">
         ${list.length ? list.map(songCard).join("") : `<p class="empty">Nothing saved yet. Hit <strong>Save</strong> on a tab.</p>`}
       </div>
+    </main>`;
+}
+
+// --- import -------------------------------------------------------------
+
+function importView() {
+  return `
+    <main class="ws">
+      <section class="hero">
+        <h1>Import a tab</h1>
+        <p class="hero-sub">Paste a chord sheet or ASCII tab and read it here — transpose, diagrams, autoscroll and print all work.</p>
+      </section>
+
+      <form class="import-form" id="import-form">
+        <div class="field-row">
+          <label>Title <input name="title" required placeholder="Can't Stop" /></label>
+          <label>Artist <input name="artist" placeholder="Red Hot Chili Peppers" /></label>
+        </div>
+        <div class="field-row">
+          <label>Type
+            <select name="type">
+              <option value="tabs">Tab</option>
+              <option value="chords">Chords</option>
+              <option value="ukulele">Ukulele</option>
+              <option value="bass">Bass</option>
+            </select>
+          </label>
+          <label>Key <input name="key" placeholder="Em" size="6" /></label>
+          <label>Tuning <input name="tuning" placeholder="E A D G B E" /></label>
+          <label>Capo <input name="capo" placeholder="No capo" /></label>
+        </div>
+        <label class="body-field">Tab text
+          <textarea name="body" required rows="14" spellcheck="false"
+            placeholder="[Intro]&#10;Em  D  Bm  C&#10;&#10;e|------------------|&#10;B|------------------|&#10;G|-7-7-9-7-9-7-9----|&#10;D|------------------|&#10;A|------------------|&#10;E|------------------|"></textarea>
+        </label>
+        <div class="import-actions">
+          <button class="pill primary" type="submit">Open in reader</button>
+          <span class="dim">Saved in this browser only (localStorage) — never committed to the repo.</span>
+        </div>
+      </form>
+
+      ${
+        imported.length
+          ? `<h2 class="rail-title">Already imported</h2>
+             <div class="results">${imported.map(songCard).join("")}</div>`
+          : `<p class="empty">Nothing imported yet.</p>`
+      }
     </main>`;
 }
 
@@ -373,6 +473,7 @@ function render() {
   let body = "";
   if (r.view === "song") body = songView(r.id);
   else if (r.view === "saved") body = savedView();
+  else if (r.view === "import") body = importView();
   else body = exploreView();
 
   app.innerHTML = header() + body;
@@ -411,8 +512,21 @@ function wire() {
     });
   });
 
-  const song = route().view === "song" ? byId(route().id) : null;
+  wireImport();
+
+  const song = route().view === "song" ? findSong(route().id) : null;
   if (!song) return;
+
+  const deleteImport = document.getElementById("delete-import");
+  if (deleteImport) {
+    deleteImport.addEventListener("click", () => {
+      imported = imported.filter((s) => s.id !== song.id);
+      persistImported();
+      state.saved.delete(song.id);
+      persistSaved();
+      go("#/import");
+    });
+  }
 
   const autoscroll = document.getElementById("autoscroll");
   autoscroll.addEventListener("click", () => {
@@ -463,6 +577,39 @@ function wire() {
 
   document.getElementById("save").addEventListener("click", () => toggleSave(song.id));
   document.getElementById("print").addEventListener("click", () => window.print());
+}
+
+function wireImport() {
+  const form = document.getElementById("import-form");
+  if (!form) return;
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const body = String(data.get("body") || "").replace(/\r\n/g, "\n").trim();
+    if (!body) return;
+    const text = (name, fallback) => {
+      const value = String(data.get(name) || "").trim();
+      return value || fallback;
+    };
+    const song = {
+      id: `imported-${Date.now().toString(36)}`,
+      imported: true,
+      title: text("title", "Untitled"),
+      artist: text("artist", "Unknown artist"),
+      type: text("type", "tabs"),
+      key: text("key", "C"),
+      tuning: text("tuning", "E A D G B E"),
+      capo: text("capo", "No capo"),
+      difficulty: "intermediate",
+      body,
+    };
+    imported = [song, ...imported];
+    persistImported();
+    state.query = "";
+    state.type = "all";
+    go(`#/song/${encodeURIComponent(song.id)}`);
+  });
 }
 
 function toggleSave(id) {
