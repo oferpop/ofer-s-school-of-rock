@@ -462,6 +462,37 @@ input {
   width: 100%;
 }
 
+.split-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.split-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
+.split-row .dim {
+  font-size: 12px;
+}
+
+.split-row input:disabled + span {
+  color: var(--dim);
+}
+
 .import-actions {
   display: flex;
   align-items: center;

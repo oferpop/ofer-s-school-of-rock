@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261110f";
+import { songs, byId, versionsOf } from "./data.js?v=20261110g";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261110f";
+} from "./chords.js?v=20261110g";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261110f";
+} from "./pro.js?v=20261110g";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261110f";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261110f";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261110f";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110f";
-import { renderStaff } from "./staff.js?v=20261110f";
+} from "./auth.js?v=20261110g";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261110g";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261110g";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110g";
+import { renderStaff } from "./staff.js?v=20261110g";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1773,6 +1773,10 @@ function importView() {
           <textarea name="body" required rows="14" spellcheck="false"
             placeholder="[Intro]&#10;Em  D  Bm  C&#10;&#10;e|------------------|&#10;B|------------------|&#10;G|-7-7-9-7-9-7-9----|&#10;D|------------------|&#10;A|------------------|&#10;E|------------------|"></textarea>
         </label>
+        <label class="split-row">
+          <input type="checkbox" name="split" id="split-album" />
+          <span>Split into separate tracks <span class="dim" id="split-hint">(paste an album tab to enable)</span></span>
+        </label>
         <div class="import-actions">
           <button class="pill primary" type="submit">Open in reader</button>
           <span class="dim">Saved in this browser only (localStorage) — never committed to the repo.</span>
@@ -2556,9 +2560,78 @@ function wireTuner() {
   }
 }
 
+// Album tabs mark each song with a line like "number 3" (Ultimate Guitar), and
+// often list the titles at the top as "3.song name".
+const OPEN_TUNINGS = {
+  "open g": "D G D G B D",
+  "open d": "D A D F# A D",
+  "open e": "E B E G# B E",
+  "open c": "C G C G C E",
+  "drop d": "D A D G B E",
+};
+
+// Album tabs often print the tuning per song ("Open G Tuning", "Tuning: D G D G B D").
+function trackTuning(body, fallback) {
+  const open = body.match(/\bopen\s+([a-g])\b/i);
+  if (open) {
+    const key = `open ${open[1].toLowerCase()}`;
+    if (OPEN_TUNINGS[key]) return OPEN_TUNINGS[key];
+  }
+  const explicit = body.match(/\btuning\s*[:\-]?\s*([A-G][#b]?(?:\s+[A-G][#b]?){3,5})/i);
+  if (explicit) return explicit[1].toUpperCase();
+  const paren = body.match(/\btuning[^\n]*\(([A-G][#b]?(?:\s+[A-G][#b]?){3,5})\)/i);
+  if (paren) return paren[1].toUpperCase();
+  return fallback;
+}
+
+function splitAlbum(body) {
+  const lines = String(body).split("\n");
+  const markers = [];
+  lines.forEach((line, index) => {
+    const match = line.trim().match(/^(?:number|track|song|part)\s+(\d{1,2})$/i);
+    if (match) markers.push({ index, number: Number(match[1]) });
+  });
+  if (markers.length < 2) return null;
+
+  const names = new Map();
+  for (let i = 0; i < markers[0].index; i++) {
+    const match = lines[i].trim().match(/^(\d{1,2})[.)]\s*(.+)$/);
+    if (match) names.set(Number(match[1]), match[2].trim());
+  }
+
+  return markers
+    .map((marker, i) => {
+      const start = marker.index + 1;
+      const end = i + 1 < markers.length ? markers[i + 1].index : lines.length;
+      return {
+        number: marker.number,
+        name: names.get(marker.number) || `Track ${marker.number}`,
+        body: lines.slice(start, end).join("\n").trim(),
+      };
+    })
+    .filter((track) => track.body);
+}
+
 function wireImport() {
   const form = document.getElementById("import-form");
   if (!form) return;
+
+  const bodyField = form.querySelector("[name=body]");
+  const splitBox = document.getElementById("split-album");
+  const splitHint = document.getElementById("split-hint");
+  const updateSplit = () => {
+    const tracks = splitAlbum(bodyField.value);
+    if (!tracks) {
+      splitBox.checked = false;
+      splitBox.disabled = true;
+      splitHint.textContent = "(paste an album tab to enable)";
+      return;
+    }
+    splitBox.disabled = false;
+    splitHint.textContent = `(${tracks.length} tracks found — one song each, in a playlist)`;
+  };
+  bodyField.addEventListener("input", updateSplit);
+  updateSplit();
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2569,15 +2642,50 @@ function wireImport() {
       const value = String(data.get(name) || "").trim();
       return value || fallback;
     };
+
+    const title = text("title", "Untitled");
+    const artist = text("artist", "Unknown artist");
+    const type = text("type", "tabs");
+    const key = text("key", "C");
+    const tuning = text("tuning", "E A D G B E");
+    const capo = text("capo", "No capo");
+
+    const tracks = data.get("split") ? splitAlbum(body) : null;
+    if (tracks && tracks.length > 1) {
+      const stamp = Date.now().toString(36);
+      const songs = tracks.map((track, i) => ({
+        id: `imported-${stamp}-${i}`,
+        imported: true,
+        title: track.name,
+        artist,
+        type,
+        key,
+        tuning: trackTuning(track.body, tuning),
+        capo,
+        difficulty: "intermediate",
+        body: track.body,
+      }));
+      imported = [...songs, ...imported];
+      persistImported();
+      const list = newPlaylist(title);
+      list.songIds = songs.map((song) => song.id);
+      state.playlists = [list, ...state.playlists];
+      savePlaylists();
+      state.query = "";
+      state.type = "all";
+      go(`#/playlist/${encodeURIComponent(list.id)}`);
+      return;
+    }
+
     const song = {
       id: `imported-${Date.now().toString(36)}`,
       imported: true,
-      title: text("title", "Untitled"),
-      artist: text("artist", "Unknown artist"),
-      type: text("type", "tabs"),
-      key: text("key", "C"),
-      tuning: text("tuning", "E A D G B E"),
-      capo: text("capo", "No capo"),
+      title,
+      artist,
+      type,
+      key,
+      tuning,
+      capo,
       difficulty: "intermediate",
       body,
     };

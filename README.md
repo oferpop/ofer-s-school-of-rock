@@ -136,6 +136,9 @@ The app also runs on any static host with **guest mode only**: without
 - Labelled tablature (`e|--0--`) and unlabelled Ultimate Guitar style blocks
   (4–6 numeric rows) are recognised as tab, so the player and the Notes view
   work on pasted tabs too
+- **Album tabs** with `number N` markers (and an optional `1.title` list at the
+  top) can be split into one song per track: the import builds the songs, fills
+  in the track names, detects open tunings per track and puts them in a playlist
 - Imported tabs are listed in the catalog with an `Imported` badge, sort and
   search alongside the shipped ones, and can be deleted from the reader
 - They live in `localStorage` (`osr.imported.v1`) and never touch the repo, so
