@@ -1380,19 +1380,19 @@ locking with the metronome at 90 BPM before pushing to 120.`,
     saves: 4_210,
     comments: 21,
     author: "publicdomain",
-    body: `[Melody] quarters in 4/4
+    body: `[Melody] quarters in 4/4 — G E E / F D D / C D E F / G G G
 C               G7              C               G7
-e|3---0---0---1---|----------------|0---1---3---3---|3---------------|
-B|----------------|3---3---1---3---|----------------|----------------|
+e|3---0---0-------|1---------------|--------0---1---|3---3---3-------|
+B|----------------|----3---3-------|1---3-----------|----------------|
 
 C               G7              C
-e|3---0---0---1---|------------0---|3-------3-------|----------------|
-B|----------------|3---3---1-------|------------1---|----------------|
+e|3---0---0-------|1---------------|----0---3---3---|----------------|
+B|----------------|----3---3-------|1---------------|1---------------|
 
 [Playing notes]
-The German tune "Hänschen klein" (Lightly Row). The whole melody sits on
-the top two strings: G E E F, D D C D, E F G G, G — then G E E F, D D C E,
-G G C. Switch the reader to Notes to see the same line on a staff.`,
+The German tune "Hänschen klein" (Lightly Row). The melody sits on the top
+two strings: G E E, F D D, C D E F, G G G — then G E E, F D D, C E G G, C.
+Switch the reader to Notes to see the same line on a staff.`,
   },
 ];
 

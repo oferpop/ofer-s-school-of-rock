@@ -99,13 +99,15 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         while ((match = FRET_TOKEN.exec(row.body))) {
           const fret = Number(match[0]);
           if (!Number.isFinite(fret)) continue;
-          const column = match.index;
+          // Bar lines take a character but no time: count only musical columns.
+          const column = row.body.slice(0, match.index).replace(/\|/g, "").length;
           if (!columns.has(column)) columns.set(column, []);
           columns.get(column).push({ rowIndex, fret });
         }
       });
 
       const ordered = [...columns.entries()].sort((a, b) => a[0] - b[0]);
+      const blockColumns = Math.max(1, ...rows.map((row) => row.body.replace(/\|/g, "").length));
       ordered.forEach(([column, notes], index) => {
         const midi = [];
         for (const { rowIndex, fret } of notes) {
@@ -115,17 +117,20 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         }
         if (!midi.length) return;
         const next = ordered[index + 1];
-        const gap = next ? (next[0] - column) * step : step * 4;
+        const gapColumns = next ? next[0] - column : blockColumns - column;
+        const gap = Math.max(1, gapColumns) * step;
+        // A phrase's last note is held for at most two beats, so it does not
+        // ring over the next phrase.
+        const maxDuration = next ? beat * 4 : beat * 2;
         events.push({
           time: timeOffset + column * step,
           midi,
-          duration: Math.max(0.12, Math.min(1.1, gap * 0.98)),
+          duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
         });
       });
 
       // Consecutive tab blocks play one after another, never on top of each other.
-      const blockColumns = Math.max(1, ...rows.map((row) => row.body.length));
       timeOffset += blockColumns * step;
     }
   } else {
@@ -170,13 +175,16 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
 function pluckBuffer(ctx, midi) {
   const frequency = 440 * 2 ** ((midi - 69) / 12);
   const sampleRate = ctx.sampleRate;
-  const seconds = 1.4;
+  const seconds = 2.8;
   const size = Math.floor(sampleRate * seconds);
   const buffer = ctx.createBuffer(1, size, sampleRate);
   const data = buffer.getChannelData(0);
 
-  // Karplus-Strong: noise burst through a damped delay line.
+  // Karplus-Strong: noise burst through a damped delay line. The decay is set
+  // per period so every string rings for roughly the same time (~1.2 s),
+  // instead of low notes humming and high notes clicking.
   const period = Math.max(2, Math.round(sampleRate / frequency));
+  const decay = Math.exp(-1 / (1.2 * frequency));
   const ring = new Float32Array(period);
   for (let i = 0; i < period; i++) ring[i] = Math.random() * 2 - 1;
   let index = 0;
@@ -184,7 +192,7 @@ function pluckBuffer(ctx, midi) {
     const current = ring[index];
     const next = ring[(index + 1) % period];
     data[i] = current;
-    ring[index] = (current + next) * 0.5 * 0.996;
+    ring[index] = (current + next) * 0.5 * decay;
     index = (index + 1) % period;
   }
   return { buffer, frequency };
@@ -291,9 +299,9 @@ export class TabPlayer {
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     const gain = ctx.createGain();
-    const end = when + Math.min(1.3, Math.max(0.15, duration));
+    const end = when + Math.max(0.15, Math.min(2.7, duration));
     gain.gain.setValueAtTime(0.9, when);
-    gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.08));
+    gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.06));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
     source.connect(gain).connect(this.master);
     source.start(when);
