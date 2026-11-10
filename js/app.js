@@ -40,6 +40,7 @@ import {
 import { listComments, addComment, deleteComment } from "./comments.js";
 import { Tuner, TUNINGS } from "./tuner.js";
 import { parseSong, TabPlayer, countIn } from "./player.js";
+import { renderStaff } from "./staff.js";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -58,6 +59,7 @@ const state = {
   ratings: loadRatings(),
   picker: "",
   backupNote: "",
+  display: localStorage.getItem("osr.display") || "tab",
   showVideo: false,
   videoEditing: false,
   videoError: "",
@@ -432,25 +434,60 @@ function exploreView() {
 
 // --- sheet --------------------------------------------------------------
 
+const TAB_LINE_RE = /^[A-Ga-g]\|/;
+
+// Returns the last line of a contiguous tablature block, or -1.
+function tabBlockEnd(lines, start) {
+  if (!TAB_LINE_RE.test(lines[start].trim())) return -1;
+  let end = start;
+  while (end + 1 < lines.length && TAB_LINE_RE.test(lines[end + 1].trim())) end += 1;
+  return end > start ? end : -1;
+}
+
+function hasTabBlocks(song) {
+  return song.body.split("\n").some((line) => TAB_LINE_RE.test(line.trim()));
+}
+
 function renderSheet(song, maxLines = 0) {
   const allLines = song.body.split("\n");
   const lines = maxLines ? allLines.slice(0, maxLines) : allLines;
   const chordTokens = chordTokensByLine(song.body);
   const out = [];
+  let parsed = null;
   let inTabBlock = false;
-  lines.forEach((line, index) => {
+
+  const staffFor = (start, end) => {
+    if (!parsed) {
+      parsed = parseSong(song, {
+        bpm: playerState.bpm,
+        transpose: state.transpose,
+        flats: state.flats,
+        simplify: state.simplify,
+      });
+    }
+    const inBlock = parsed.events.filter(
+      (event) => event.lines[0] === start && event.lines[1] === end,
+    );
+    if (!inBlock.length) return "";
+    const first = Math.min(...inBlock.map((event) => event.time));
+    const events = inBlock.map((event) => ({
+      ...event,
+      column: Math.round((event.time - first) / parsed.step),
+    }));
+    return `<div class="staff-block" data-line-start="${start}" data-line-end="${end}">${renderStaff(events)}</div>`;
+  };
+
+  const renderLine = (line, index) => {
     const trimmed = line.trim();
     if (!trimmed) {
-      out.push(`<div class="line" data-line="${index}">&nbsp;</div>`);
       inTabBlock = false;
-      return;
+      return `<div class="line" data-line="${index}">&nbsp;</div>`;
     }
     if (/^\[.*\]$/.test(trimmed)) {
-      out.push(`<h4 class="section" data-line="${index}">${esc(trimmed.slice(1, -1))}</h4>`);
       inTabBlock = false;
-      return;
+      return `<h4 class="section" data-line="${index}">${esc(trimmed.slice(1, -1))}</h4>`;
     }
-    if (/^[eBGDAE]\|/.test(trimmed)) inTabBlock = true;
+    if (TAB_LINE_RE.test(trimmed)) inTabBlock = true;
 
     const allowed = new Set(chordTokens[index]);
     const tokens = line.split(/(\s+)/);
@@ -467,8 +504,27 @@ function renderSheet(song, maxLines = 0) {
       })
       .join("");
 
-    out.push(`<div class="line${inTabBlock ? " tabline" : ""}" data-line="${index}">${rendered}</div>`);
-  });
+    return `<div class="line${inTabBlock ? " tabline" : ""}" data-line="${index}">${rendered}</div>`;
+  };
+
+  let index = 0;
+  while (index < lines.length) {
+    const end = tabBlockEnd(lines, index);
+    if (end !== -1) {
+      if (state.display !== "tab") {
+        const staff = staffFor(index, end);
+        if (staff) out.push(staff);
+      }
+      if (state.display !== "notes") {
+        for (let i = index; i <= end; i++) out.push(renderLine(lines[i], i));
+      }
+      index = end + 1;
+      continue;
+    }
+    out.push(renderLine(lines[index], index));
+    index += 1;
+  }
+
   return `<div class="sheet" style="--sheet-font: ${(15 * state.fontScale).toFixed(1)}px">${out.join("")}</div>`;
 }
 
@@ -786,6 +842,20 @@ function songView(id) {
             <button class="pill sq" id="font-down" aria-label="Smaller text">A−</button>
             <button class="pill sq" id="font-up" aria-label="Larger text">A+</button>
           </div>
+          ${
+            hasTabBlocks(song)
+              ? `<div class="pill-group" role="group" aria-label="Display mode">
+                   ${["tab", "notes", "both"]
+                     .map(
+                       (mode) =>
+                         `<button class="pill sq display-btn ${state.display === mode ? "is-on" : ""}" data-display="${mode}">${
+                           mode === "tab" ? "Tab" : mode === "notes" ? "Notes" : "Both"
+                         }</button>`,
+                     )
+                     .join("")}
+                 </div>`
+              : ""
+          }
           <button class="pill ${isSaved ? "is-on" : ""}" id="save" aria-pressed="${isSaved}">${isSaved ? "Saved" : "Save"}</button>
           <button class="pill ${state.showVideo ? "is-on" : ""}" id="video-toggle" aria-pressed="${state.showVideo}">Video</button>
           <form class="add-list" id="add-list-form">
@@ -1161,12 +1231,18 @@ function stopTicker() {
 
 function highlightRange(range) {
   document.querySelectorAll(".sheet .is-playing").forEach((el) => el.classList.remove("is-playing"));
+  document.querySelectorAll(".sheet .staff-block").forEach((el) => el.classList.remove("is-playing"));
   if (!range) return;
   const [from, to] = range;
   for (let i = from; i <= to; i++) {
     document.querySelectorAll(`.sheet [data-line="${i}"]`).forEach((el) => el.classList.add("is-playing"));
   }
-  const target = document.querySelector(`.sheet [data-line="${from}"]`);
+  document.querySelectorAll(".sheet .staff-block").forEach((el) => {
+    if (Number(el.dataset.lineStart) === from && Number(el.dataset.lineEnd) === to) {
+      el.classList.add("is-playing");
+    }
+  });
+  const target = document.querySelector(`.sheet [data-line="${from}"]`) || document.querySelector(".sheet .staff-block.is-playing");
   if (!target) return;
   const rect = target.getBoundingClientRect();
   if (rect.top < 0 || rect.bottom > window.innerHeight) {
@@ -1951,6 +2027,17 @@ function wire() {
   document.getElementById("font-up").addEventListener("click", () => {
     state.fontScale = Math.min(1.8, Math.round((state.fontScale + 0.1) * 10) / 10);
     render();
+  });
+
+  document.querySelectorAll("[data-display]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.display;
+      if (state.display === mode) return;
+      state.display = mode;
+      localStorage.setItem("osr.display", mode);
+      stopPlayer();
+      render();
+    });
   });
 
   document.getElementById("save").addEventListener("click", () => toggleSave(song.id));

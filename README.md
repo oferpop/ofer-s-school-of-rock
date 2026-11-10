@@ -58,9 +58,11 @@ The app also runs on any static host with **guest mode only**: without
 - **Simplify** — strips extensions and slash basses (`B7` → `B`, `C#7` → `C#`)
 - **Text size** A− / A+
 - **Save** to My tabs (localStorage), **Export .txt**, **Print / PDF**
+- **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
+  rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
   chord lines one bar each, with synthesized plucks, BPM, count-in and loop,
-  highlighting the line that is sounding
+  highlighting the line or staff that is sounding
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play
@@ -209,6 +211,12 @@ it stays in your browser.
 - The reader highlights every line of the sounding block (or chord line) and
   scrolls it into view
 
+`js/staff.js`
+- Draws the same parsed events as a treble staff: five lines, G-clef, 4/4 time,
+  barlines every 16 columns, rotated note heads, stems, sharps and ledger lines
+- Four bars per row, so a long melody wraps; the staff block carries the source
+  line range, which is how the player highlights it
+
 ## Security notes
 
 - Passwords are never stored or logged in clear text; scrypt uses a per-user
@@ -248,9 +256,10 @@ it stays in your browser.
 - Playlists, saved tabs and stats are per account on that server only
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only
-- Catalog is 26 hand-written songs — 14 public-domain pieces, three original
+- Catalog is 27 hand-written songs — 14 public-domain pieces, three original
   OSR solo studies (E minor rock, 12-bar blues in A, country in G), two bass
-  arrangements (House of the Rising Sun and a blues-in-A study), and seven
+  arrangements (House of the Rising Sun and a blues-in-A study), the public-domain
+  melody "יונתן הקטן" (Hänschen klein) with tab and staff, and seven
   harmony-and-structure charts (The Way Things Go, plus Can't Stop, Under the
   Bridge, Californication, Scar Tissue, Otherside and Dani California). The
   RHCP entries carry chords, sections and playing notes only: no lyrics, and

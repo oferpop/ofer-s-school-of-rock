@@ -2230,6 +2230,72 @@ input {
   cursor: default;
 }
 
+/* ---------- staff notation ---------- */
+
+.staff-block {
+  margin: 12px 0 16px;
+  padding: 8px 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #121214;
+  overflow-x: auto;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.staff-block.is-playing {
+  border-color: rgba(255, 210, 63, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 210, 63, 0.2);
+}
+
+.staff-svg {
+  display: block;
+  width: 100%;
+  min-width: 560px;
+  height: auto;
+}
+
+.staff-line,
+.staff-bar {
+  stroke: #3d3d45;
+  stroke-width: 1;
+}
+
+.staff-ledger {
+  stroke: #5a5a63;
+  stroke-width: 1;
+}
+
+.staff-head {
+  fill: #e9e9ec;
+}
+
+.staff-stem {
+  stroke: #e9e9ec;
+  stroke-width: 1.4;
+}
+
+.staff-clef {
+  fill: #dfe1e6;
+  font-size: 46px;
+  font-family: "Bravura", "Noto Music", "Segoe UI Symbol", "Apple Symbols", serif;
+}
+
+.staff-time {
+  fill: #9a9aa2;
+  font-size: 12px;
+  font-family: var(--font);
+}
+
+.staff-accidental {
+  fill: var(--accent);
+  font-size: 13px;
+}
+
+.display-btn {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1000px) {

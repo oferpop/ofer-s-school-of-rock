@@ -1365,6 +1365,35 @@ Two-feel shuffle: root on beat one, fifth on beat three, and a short
 walk into the next chord. Keep the right hand loose — the study is about
 locking with the metronome at 90 BPM before pushing to 120.`,
   },
+  {
+    id: "yonatan-hakatan",
+    artist: "Traditional",
+    title: "יונתן הקטן (Little Jonathan)",
+    type: "tabs",
+    tuning: "E A D G B E",
+    key: "C",
+    capo: "No capo",
+    difficulty: "novice",
+    rating: 4.8,
+    votes: 264,
+    views: 156_320,
+    saves: 4_210,
+    comments: 21,
+    author: "publicdomain",
+    body: `[Melody] quarters in 4/4
+C               G7              C               G7
+e|3---0---0---1---|----------------|0---1---3---3---|3---------------|
+B|----------------|3---3---1---3---|----------------|----------------|
+
+C               G7              C
+e|3---0---0---1---|------------0---|3-------3-------|----------------|
+B|----------------|3---3---1-------|------------1---|----------------|
+
+[Playing notes]
+The German tune "Hänschen klein" (Lightly Row). The whole melody sits on
+the top two strings: G E E F, D D C D, E F G G, G — then G E E F, D D C E,
+G G C. Switch the reader to Notes to see the same line on a staff.`,
+  },
 ];
 
 export function byId(id) {
