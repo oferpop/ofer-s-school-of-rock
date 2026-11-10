@@ -68,6 +68,13 @@ The app also runs on any static host with **guest mode only**: without
 - Four short original lessons: reading a chord sheet, transpose/capo, practising
   with the metronome, building a set list
 
+**Tuner (`#/tuner`)**
+- Chromatic tuner from the microphone: note, octave, cents and a needle, with an
+  in-tune band of ±5 cents
+- Reference tones for guitar (standard, drop D, half step down), 4-string bass
+  and ukulele; the chosen tuning is remembered
+- Audio is analysed in the page and never recorded or uploaded
+
 **Ratings and comments**
 - Rate any tab 1–5 stars; the rating is yours alone, stored with the account and
   cleared by clicking the same star again
@@ -165,6 +172,15 @@ it stays in your browser.
 - Same-origin fetch helper with a 204 path, `probe()` for "is an accounts server
   here?", and `keepalive` state pushes on unload
 
+`js/tuner.js`
+- `getUserMedia` (echo cancellation and gain control off) → `AnalyserNode`
+- YIN pitch detection (difference function + cumulative-mean normalisation) at
+  ~14 readings per second, with parabolic interpolation; tested from E1 (41 Hz)
+  to A4 (440 Hz), silence returns no reading
+- `noteFromFrequency()` maps Hz to a note, octave and cents around A4 = 440
+- Reference tones are short triangle-wave envelopes; the microphone is stopped
+  and the AudioContext closed whenever the page or tuning changes
+
 ## Security notes
 
 - Passwords are never stored or logged in clear text; scrypt uses a per-user
@@ -185,6 +201,8 @@ it stays in your browser.
 - Comments are plain text: escaped on render, length-capped, rate-limited to 20
   per hour per account, and deletable only by their author. There is no
   moderation queue, reporting or editing.
+- Microphone audio is analysed locally by the tuner and never sent anywhere;
+  the browser still asks for permission each session, and no audio is stored.
 
 ## Deliberate gaps
 
@@ -192,6 +210,9 @@ it stays in your browser.
   verification or password reset
 - Comments have no moderation, reporting, editing or pagination beyond the
   newest 200 per song; ratings are private to each account
+- The tuner is chromatic with a fixed A4 = 440 Hz: it detects one note at a time,
+  has no strobe or polyphonic display and no per-instrument calibration beyond
+  the reference tones
 - Playlists, saved tabs and stats are per account on that server only
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only

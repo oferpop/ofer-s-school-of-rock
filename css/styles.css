@@ -1849,6 +1849,157 @@ input {
   font-size: 11px;
 }
 
+/* ---------- tuner ---------- */
+
+.tuner-page {
+  max-width: 760px;
+}
+
+.tuner-card {
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #1b1b1f, #141418);
+}
+
+.tuner-note-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  min-height: 110px;
+}
+
+.tuner-note {
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: -4px;
+  line-height: 1;
+}
+
+.tuner-octave {
+  font-size: 28px;
+  color: var(--muted);
+}
+
+.tuner-gauge {
+  position: relative;
+  height: 10px;
+  margin: 14px 0 12px;
+  border-radius: 999px;
+  background: #26262c;
+}
+
+.tuner-center {
+  position: absolute;
+  left: 50%;
+  top: -6px;
+  width: 2px;
+  height: 22px;
+  background: #3d3d45;
+  transform: translateX(-1px);
+}
+
+.tuner-marker {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  width: 22px;
+  height: 22px;
+  margin-left: -11px;
+  border-radius: 50%;
+  background: #4a4a53;
+  transition: left 0.08s linear, background 0.12s ease;
+}
+
+.tuner-card.is-live .tuner-marker {
+  background: var(--accent);
+}
+
+.tuner-card.is-close .tuner-marker {
+  background: #f0b429;
+}
+
+.tuner-card.is-in-tune .tuner-marker {
+  background: var(--green);
+}
+
+.tuner-status {
+  margin: 8px 0 2px;
+  text-align: center;
+  font-size: 15px;
+}
+
+.tuner-card.is-in-tune .tuner-status {
+  color: var(--green);
+}
+
+.tuner-hz {
+  margin: 0 0 14px;
+  min-height: 1.2em;
+  text-align: center;
+  font-size: 12.5px;
+}
+
+.tuner-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tuner-error {
+  margin: 10px 0 0;
+  min-height: 1.2em;
+  color: #f87171;
+  text-align: center;
+  font-size: 13px;
+}
+
+.tone-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tone-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 78px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tone-btn:hover {
+  border-color: var(--accent);
+}
+
+.tone-btn strong {
+  font-size: 16px;
+}
+
+.tone-btn span {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.tone-btn.is-playing {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.tone-btn.is-playing span {
+  color: #4a3f14;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1000px) {

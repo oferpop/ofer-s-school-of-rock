@@ -38,6 +38,7 @@ import {
   pushState,
 } from "./auth.js";
 import { listComments, addComment, deleteComment } from "./comments.js";
+import { Tuner, TUNINGS } from "./tuner.js";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -59,6 +60,7 @@ const state = {
   showVideo: false,
   videoEditing: false,
   videoError: "",
+  tunerTuning: localStorage.getItem("osr.tuning.v1") || "guitar",
   // accounts
   user: null,
   authAvailable: null,
@@ -75,10 +77,12 @@ const state = {
 };
 
 const metro = new Metronome();
+const tuner = new Tuner();
 
 let autoScrollRaf = null;
 let practiceTimer = null;
 let practiceSong = null;
+let tunerRunning = false;
 let applyingRemote = false;
 let syncTimer = null;
 let syncPending = false;
@@ -172,6 +176,7 @@ function route() {
   if (parts[0] === "artists") return { view: "artists" };
   if (parts[0] === "artist" && parts[1]) return { view: "artist", slug: decodeURIComponent(parts[1]) };
   if (parts[0] === "charts") return { view: "charts" };
+  if (parts[0] === "tuner") return { view: "tuner" };
   if (parts[0] === "learn") return { view: "learn" };
   if (parts[0] === "login") return { view: "auth", mode: "login" };
   if (parts[0] === "signup") return { view: "auth", mode: "signup" };
@@ -186,6 +191,7 @@ window.addEventListener("hashchange", () => {
   stopAutoScroll();
   stopMetronome();
   stopPractice();
+  stopTuner();
   state.picker = "";
   state.backupNote = "";
   state.showVideo = false;
@@ -210,6 +216,7 @@ function header() {
         <a href="#/" class="${view === "explore" ? "is-active" : ""}">Tabs</a>
         <a href="#/artists" class="${view === "artists" || view === "artist" ? "is-active" : ""}">Artists</a>
         <a href="#/charts" class="${view === "charts" ? "is-active" : ""}">Charts</a>
+        <a href="#/tuner" class="${view === "tuner" ? "is-active" : ""}">Tuner</a>
         <a href="#/saved" class="${view === "saved" ? "is-active" : ""}">My tabs</a>
         <a href="#/playlists" class="${view === "playlists" || view === "playlist" ? "is-active" : ""}">Playlists</a>
         <a href="#/import" class="${view === "import" ? "is-active" : ""}">Import</a>
@@ -908,6 +915,76 @@ function learnView() {
     </main>`;
 }
 
+function tunerView() {
+  const tuning = TUNINGS[state.tunerTuning] || TUNINGS.guitar;
+  return `
+    <main class="ws tuner-page">
+      <section class="hero">
+        <p class="crumb">Tool</p>
+        <h1>Tuner</h1>
+        <p class="hero-sub">Chromatic tuning from your microphone — nothing is recorded or uploaded. Reference tones work without one.</p>
+      </section>
+
+      <div class="tuner-card" id="tuner-readout">
+        <div class="tuner-note-row">
+          <span class="tuner-note" id="tuner-note">—</span>
+          <span class="tuner-octave" id="tuner-octave"></span>
+        </div>
+        <div class="tuner-gauge">
+          <span class="tuner-center" aria-hidden="true"></span>
+          <span class="tuner-marker" id="tuner-marker" aria-hidden="true"></span>
+        </div>
+        <p class="tuner-status" id="tuner-status">Press start and play a note.</p>
+        <p class="tuner-hz dim" id="tuner-hz"></p>
+        <div class="tuner-controls">
+          <button class="pill primary" id="tuner-toggle" aria-pressed="false">Start listening</button>
+          <label class="pill-select">Tuning
+            <select id="tuning-select">
+              ${Object.entries(TUNINGS)
+                .map(
+                  ([key, entry]) =>
+                    `<option value="${key}" ${
+                      key === state.tunerTuning ? "selected" : ""
+                    }>${esc(entry.label)}</option>`,
+                )
+                .join("")}
+            </select>
+          </label>
+        </div>
+        <p class="tuner-error" id="tuner-error" role="alert"></p>
+      </div>
+
+      <section class="pro-block">
+        <h2>Reference tones</h2>
+        <p class="dim">Tap a string to hear it. These play through the speakers — no microphone needed.</p>
+        <div class="tone-row" id="tone-row">
+          ${tuning.strings
+            .map(
+              ([name, hz]) => `<button class="tone-btn" data-tone="${hz}">
+                <strong>${esc(name)}</strong><span>${hz.toFixed(2)} Hz</span>
+              </button>`,
+            )
+            .join("")}
+        </div>
+      </section>
+    </main>`;
+}
+
+function stopTuner() {
+  if (tunerRunning) tuner.stop();
+  tunerRunning = false;
+  const readout = document.getElementById("tuner-readout");
+  const note = document.getElementById("tuner-note");
+  const octave = document.getElementById("tuner-octave");
+  const marker = document.getElementById("tuner-marker");
+  const hz = document.getElementById("tuner-hz");
+  if (readout) readout.classList.remove("is-live", "is-in-tune", "is-close");
+  if (note) note.textContent = "—";
+  if (octave) octave.textContent = "";
+  if (marker) marker.style.left = "50%";
+  if (hz) hz.textContent = "";
+}
+
 // --- accounts -----------------------------------------------------------
 
 function emptyState(snapshot) {
@@ -1021,11 +1098,12 @@ async function doLogout() {
 async function initAuth() {
   const result = await probe();
   state.authAvailable = result.available;
-  if (result.user) {
-    state.user = result.user;
-    const remote = await pullState();
-    if (remote.state && !emptyState(remote.state)) applyState(remote.state);
-  }
+  // Nothing about the header changes for a guest, so do not re-render and
+  // invalidate handlers bound by the first render.
+  if (!result.user) return;
+  state.user = result.user;
+  const remote = await pullState();
+  if (remote.state && !emptyState(remote.state)) applyState(remote.state);
   render();
 }
 
@@ -1282,6 +1360,7 @@ function proView() {
         <ul class="pro-features">
           <li><strong>Playlists</strong> — build set lists and step through them from the reader.</li>
           <li><strong>Metronome</strong> — 40–240 BPM, 2/3/4/6 beats per bar, tap tempo, accented downbeat.</li>
+          <li><strong>Tuner</strong> — chromatic microphone tuning with reference tones. <a class="learn-link" href="#/tuner">Open the tuner</a></li>
           <li><strong>Practice log</strong> — minutes counted while the metronome or autoscroll runs.</li>
           <li><strong>Tab export</strong> — one-click .txt of any tab, plus a full JSON backup.</li>
           <li><strong>Print / PDF</strong> — the reader's print stylesheet, now with the Pro chrome stripped.</li>
@@ -1442,6 +1521,7 @@ function render() {
   else if (r.view === "artists") body = artistsView();
   else if (r.view === "artist") body = artistView(r.slug);
   else if (r.view === "charts") body = chartsView();
+  else if (r.view === "tuner") body = tunerView();
   else if (r.view === "learn") body = learnView();
   else if (r.view === "auth") body = authView(r.mode);
   else body = exploreView();
@@ -1487,6 +1567,7 @@ function wire() {
   wirePlaylists();
   wirePro();
   wireAuth();
+  wireTuner();
 
   const song = route().view === "song" ? findSong(route().id) : null;
   if (!song) return;
@@ -1942,6 +2023,131 @@ function wireComments(song) {
   });
 
   refresh();
+}
+
+function wireTuner() {
+  const toggle = document.getElementById("tuner-toggle");
+  if (!toggle) return;
+
+  // Query on use: the card must survive the permission prompt even if the page
+  // re-renders while the browser dialog is open.
+  const el = (id) => document.getElementById(id);
+
+  const setRunning = (running) => {
+    const button = el("tuner-toggle");
+    if (button) {
+      button.textContent = running ? "Stop listening" : "Start listening";
+      button.setAttribute("aria-pressed", String(running));
+    }
+    const readout = el("tuner-readout");
+    if (readout) readout.classList.toggle("is-live", running);
+  };
+  setRunning(tunerRunning);
+
+  const paint = (reading) => {
+    const noteEl = el("tuner-note");
+    const octaveEl = el("tuner-octave");
+    const marker = el("tuner-marker");
+    const statusEl = el("tuner-status");
+    const hzEl = el("tuner-hz");
+    const readout = el("tuner-readout");
+
+    if (noteEl) noteEl.textContent = reading.name;
+    if (octaveEl) octaveEl.textContent = reading.octave;
+    const cents = Math.max(-50, Math.min(50, reading.cents));
+    if (marker) marker.style.left = `${50 + cents}%`;
+    const abs = Math.abs(reading.cents);
+    if (readout) {
+      readout.classList.toggle("is-in-tune", abs <= 5);
+      readout.classList.toggle("is-close", abs > 5 && abs <= 15);
+    }
+    if (statusEl) {
+      statusEl.textContent =
+        abs <= 5
+          ? "In tune"
+          : abs <= 15
+            ? reading.cents > 0
+              ? `Slightly sharp (+${reading.cents}¢)`
+              : `Slightly flat (${reading.cents}¢)`
+            : reading.cents > 0
+              ? "Sharp"
+              : "Flat";
+    }
+    if (hzEl) hzEl.textContent = `${reading.frequency.toFixed(1)} Hz · ${reading.cents > 0 ? "+" : ""}${reading.cents}¢`;
+  };
+
+  toggle.addEventListener("click", async () => {
+    if (tunerRunning) {
+      stopTuner();
+      setRunning(false);
+      const statusEl = el("tuner-status");
+      if (statusEl) statusEl.textContent = "Stopped.";
+      return;
+    }
+
+    const errorEl = el("tuner-error");
+    if (errorEl) errorEl.textContent = "";
+    const statusEl = el("tuner-status");
+    if (statusEl) statusEl.textContent = "Waiting for microphone permission…";
+    toggle.disabled = true;
+
+    const outcome = await Promise.race([
+      tuner.start({
+        onResult: paint,
+        onError: (message) => {
+          const target = el("tuner-error");
+          if (target) target.textContent = message;
+          const note = el("tuner-status");
+          if (note) note.textContent = "Press start and play a note.";
+        },
+      }),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 10000)),
+    ]);
+
+    const button = el("tuner-toggle");
+    if (button) button.disabled = false;
+
+    if (outcome === "timeout") {
+      tuner.stop();
+      tunerRunning = false;
+      setRunning(false);
+      const target = el("tuner-error");
+      if (target) target.textContent = "No microphone answered. Check the browser's microphone permission and try again.";
+      const note = el("tuner-status");
+      if (note) note.textContent = "Press start and play a note.";
+      return;
+    }
+
+    tunerRunning = Boolean(outcome);
+    setRunning(tunerRunning);
+    if (outcome) {
+      const note = el("tuner-status");
+      if (note) note.textContent = "Listening… play a note.";
+    }
+  });
+
+  const select = document.getElementById("tuning-select");
+  if (select) {
+    select.addEventListener("change", (event) => {
+      state.tunerTuning = event.target.value;
+      localStorage.setItem("osr.tuning.v1", state.tunerTuning);
+      stopTuner();
+      render();
+    });
+  }
+
+  const tones = document.getElementById("tone-row");
+  if (tones) {
+    tones.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-tone]");
+      if (!button) return;
+      const hz = Number(button.dataset.tone);
+      if (!Number.isFinite(hz)) return;
+      button.classList.add("is-playing");
+      setTimeout(() => button.classList.remove("is-playing"), 500);
+      tuner.reference(hz);
+    });
+  }
 }
 
 function wireImport() {
