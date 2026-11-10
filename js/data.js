@@ -947,82 +947,17 @@ Em  D  Bm  C
 Em  D  Bm  C
 Em  D  Bm  C
 
-[Groove study — original, not the record]
-The whole verse rides one 16th-note pattern. Keep the right hand
-moving non-stop and mute the left hand between notes.
+[Playing notes]
+Verses ride a 16th-note funk pattern over Em - D - Bm - C: keep the
+right hand moving non-stop and mute the left hand between notes.
+The chorus opens up on G - D - Bm - C and rings longer.
+Hold the last C, then drop back to the Em groove for the outro.
 
-Em
-e|----------------------------------|
-B|----------------------------------|
-G|----------------------------------|
-D|----------0-2-0-----------0-2-0---|
-A|-0--0-2-3-------3-0-2-3-----------|
-E|----------------------------------|
-
-D                 Bm                C
-e|-----------------|-----------------|-----------------|
-B|-----------------|-----------------|-----------------|
-G|-----------------|-----------------|-----------------|
-D|-0-2-0-------0-2-|-4-2-4-------2-0-|-2-0-2-------0---|
-A|-------3-0-2-----|-------4-2-------|-------3-2-0-----|
-E|-----------------|-----------------|-----------------|
-
-[Chorus solo study — original]
-Eight bars over G - D - Bm - C, twice. G major / E minor
-pentatonic, no lyrics needed to play it.
-
-G
-e|-------------------------|
-B|-----------------7-8-10--|
-G|-7-7-9-7-9-7-9-----------|
-D|-------------------------|
-A|-------------------------|
-E|-------------------------|
-
-D
-e|-------------------------|
-B|-10-8-7------------------|
-G|--------9-7-9-7-9-7------|
-D|-------------------------|
-A|-------------------------|
-E|-------------------------|
-
-Bm
-e|---------------------10-8-7-|
-B|-10-8-7-8-10-8-7-8----------|
-G|----------------------------|
-D|----------------------------|
-A|----------------------------|
-E|----------------------------|
-
-C
-e|-7-8-7-------------------|
-B|-------10-8-7-8-7--------|
-G|------------------9-7----|
-D|-------------------------|
-A|-------------------------|
-E|-------------------------|
-
-G                 D
-e|-12-10-8-10-12---|-15-12-10-12-10--|
-B|-----------------|-----------------|
-G|-----------------|-----------------|
-D|-----------------|-----------------|
-A|-----------------|-----------------|
-E|-----------------|-----------------|
-
-Bm                C
-e|-8-7-5-----------|-7---------------|
-B|-------8-7-5-----|---10-8-7--------|
-G|-------------7---|------------------|
-D|-----------------|------------------|
-A|-----------------|------------------|
-E|-----------------|------------------|
-
-Notes: this is a study in the same key, position and feel as the
-record, not a note-for-note transcription of the riff or the solo.
-Lyrics are left out on purpose — play the chart under the vocal.
-Hold the last C, then drop back to the Em groove for the outro.`,
+[Riff and solo]
+This chart is the harmony and the song map only. For the riff and
+the solo, paste a transcription you have access to into Import
+(top navigation) — it opens in this same reader with transpose,
+diagrams, autoscroll and print.`,
   },
 ];
 

@@ -85,9 +85,9 @@ it stays in your browser.
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only
 - Catalog is 19 hand-written songs — 14 public-domain pieces, one
   chords-and-structure chart for "The Way Things Go" (no lyrics), one for
-  "Can't Stop" (chords, structure and original study tabs, no lyrics or
-  note-for-note riff/solo transcription) and three original OSR solo studies
-  (E minor rock, 12-bar blues in A, country in G)
+  "Can't Stop" (harmony and song map only — riff and solo go through Import)
+  and three original OSR solo studies (E minor rock, 12-bar blues in A,
+  country in G)
 
 ## Layout notes
 
