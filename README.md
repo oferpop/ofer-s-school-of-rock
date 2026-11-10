@@ -9,12 +9,14 @@ for this project.
 ## Run it
 
 ```bash
-cd "Default Project"
+git clone https://github.com/oferpop/ofer-s-school-of-rock.git
+cd ofer-s-school-of-rock
 python3 -m http.server 4173
 # open http://127.0.0.1:4173
 ```
 
-No build step, no npm install. Plain ES modules.
+No build step, no npm install. Plain ES modules — they need to be served over
+HTTP, so opening `index.html` from the filesystem will not work.
 
 ## What's implemented
 
