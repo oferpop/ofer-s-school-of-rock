@@ -39,6 +39,7 @@ import {
 } from "./auth.js";
 import { listComments, addComment, deleteComment } from "./comments.js";
 import { Tuner, TUNINGS } from "./tuner.js";
+import { parseSong, TabPlayer, countIn } from "./player.js";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -78,6 +79,19 @@ const state = {
 
 const metro = new Metronome();
 const tuner = new Tuner();
+const tabPlayer = new TabPlayer();
+
+const playerState = {
+  open: false,
+  bpm: Number(localStorage.getItem("osr.player.bpm")) || 100,
+  countIn: localStorage.getItem("osr.player.countin") !== "off",
+  loop: localStorage.getItem("osr.player.loop") === "on",
+  status: "stopped",
+  parsed: null,
+  songId: null,
+};
+
+let playerTicker = null;
 
 let autoScrollRaf = null;
 let practiceTimer = null;
@@ -192,6 +206,7 @@ window.addEventListener("hashchange", () => {
   stopMetronome();
   stopPractice();
   stopTuner();
+  stopPlayer({ keepOpen: true });
   state.picker = "";
   state.backupNote = "";
   state.showVideo = false;
@@ -426,12 +441,12 @@ function renderSheet(song, maxLines = 0) {
   lines.forEach((line, index) => {
     const trimmed = line.trim();
     if (!trimmed) {
-      out.push(`<div class="line">&nbsp;</div>`);
+      out.push(`<div class="line" data-line="${index}">&nbsp;</div>`);
       inTabBlock = false;
       return;
     }
     if (/^\[.*\]$/.test(trimmed)) {
-      out.push(`<h4 class="section">${esc(trimmed.slice(1, -1))}</h4>`);
+      out.push(`<h4 class="section" data-line="${index}">${esc(trimmed.slice(1, -1))}</h4>`);
       inTabBlock = false;
       return;
     }
@@ -452,7 +467,7 @@ function renderSheet(song, maxLines = 0) {
       })
       .join("");
 
-    out.push(`<div class="line${inTabBlock ? " tabline" : ""}">${rendered}</div>`);
+    out.push(`<div class="line${inTabBlock ? " tabline" : ""}" data-line="${index}">${rendered}</div>`);
   });
   return `<div class="sheet" style="--sheet-font: ${(15 * state.fontScale).toFixed(1)}px">${out.join("")}</div>`;
 }
@@ -756,6 +771,7 @@ function songView(id) {
         }
 
         <div class="toolbar">
+          <button class="pill primary" id="play-tab"><span class="ico">▶</span> Play tab</button>
           <button class="pill primary" id="autoscroll" aria-pressed="${state.playing}">
             <span class="ico">${state.playing ? "❚❚" : "▶"}</span> Autoscroll
           </button>
@@ -826,6 +842,8 @@ function songView(id) {
             ${Array.from({ length: metro.beats }, (_, i) => `<span class="dot" data-beat="${i}"></span>`).join("")}
           </div>
         </div>
+
+        ${playerBar()}
 
         ${videoPanel(song)}
 
@@ -1068,6 +1086,212 @@ function stopTuner() {
   if (octave) octave.textContent = "";
   if (marker) marker.style.left = "50%";
   if (hz) hz.textContent = "";
+}
+
+// --- tab player ---------------------------------------------------------
+
+const clock = (seconds) => {
+  const total = Math.max(0, Math.round(seconds || 0));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+
+function playerBar() {
+  const time = playerState.parsed ? clock(tabPlayer.position) : "0:00";
+  const total = playerState.parsed ? clock(playerState.parsed.duration) : "0:00";
+  const playing = playerState.status === "playing";
+  return `
+    <div class="player-bar" id="player-bar" ${playerState.open ? "" : "hidden"}>
+      <span class="pb-label">Play</span>
+      <button class="pill primary" id="player-toggle" aria-pressed="${playing}">
+        <span class="ico">${playing ? "❚❚" : "▶"}</span> ${
+          playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play"
+        }
+      </button>
+      <button class="pill" id="player-stop">Stop</button>
+      <div class="pill-group" role="group" aria-label="Player tempo">
+        <button class="pill sq" id="player-bpm-down" aria-label="Slower">−</button>
+        <span class="pill sq value" id="player-bpm">${playerState.bpm}</span>
+        <button class="pill sq" id="player-bpm-up" aria-label="Faster">+</button>
+      </div>
+      <button class="pill ${playerState.countIn ? "is-on" : ""}" id="player-countin" aria-pressed="${playerState.countIn}">Count-in</button>
+      <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
+      <span class="player-time dim" id="player-time">${time} / ${total}</span>
+      <span class="player-kind dim" id="player-kind">${
+        playerState.parsed ? (playerState.parsed.kind === "tab" ? "Tablature" : "Chords") : ""
+      }</span>
+    </div>`;
+}
+
+function updatePlayerBar() {
+  const bar = document.getElementById("player-bar");
+  if (!bar) return;
+  bar.hidden = !playerState.open;
+
+  const toggle = document.getElementById("player-toggle");
+  if (toggle) {
+    const playing = playerState.status === "playing";
+    toggle.innerHTML = `<span class="ico">${playing ? "❚❚" : "▶"}</span> ${
+      playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play"
+    }`;
+    toggle.setAttribute("aria-pressed", String(playing));
+  }
+
+  const bpm = document.getElementById("player-bpm");
+  if (bpm) bpm.textContent = playerState.bpm;
+
+  const time = document.getElementById("player-time");
+  if (time && playerState.parsed) {
+    const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+    time.textContent = `${clock(position)} / ${clock(playerState.parsed.duration)}`;
+  }
+
+  const kind = document.getElementById("player-kind");
+  if (kind && playerState.parsed) {
+    kind.textContent = playerState.parsed.kind === "tab" ? "Tablature" : "Chords";
+  }
+}
+
+function startTicker() {
+  stopTicker();
+  playerTicker = setInterval(updatePlayerBar, 250);
+}
+
+function stopTicker() {
+  if (playerTicker) clearInterval(playerTicker);
+  playerTicker = null;
+}
+
+function highlightRange(range) {
+  document.querySelectorAll(".sheet .is-playing").forEach((el) => el.classList.remove("is-playing"));
+  if (!range) return;
+  const [from, to] = range;
+  for (let i = from; i <= to; i++) {
+    document.querySelectorAll(`.sheet [data-line="${i}"]`).forEach((el) => el.classList.add("is-playing"));
+  }
+  const target = document.querySelector(`.sheet [data-line="${from}"]`);
+  if (!target) return;
+  const rect = target.getBoundingClientRect();
+  if (rect.top < 0 || rect.bottom > window.innerHeight) {
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+}
+
+function stopPlayer({ keepOpen = false } = {}) {
+  tabPlayer.stop();
+  stopTicker();
+  highlightRange(null);
+  playerState.status = "stopped";
+  if (!keepOpen) playerState.open = false;
+  updatePlayerBar();
+}
+
+async function startPlayer(song, { from = 0, fraction = null } = {}) {
+  playerState.open = true;
+  playerState.songId = song.id;
+
+  const parsed = parseSong(song, {
+    bpm: playerState.bpm,
+    transpose: state.transpose,
+    flats: state.flats,
+    simplify: state.simplify,
+  });
+  if (!parsed.events.length) {
+    playerState.status = "stopped";
+    updatePlayerBar();
+    return;
+  }
+  playerState.parsed = parsed;
+  if (fraction !== null) from = Math.min(parsed.duration * fraction, parsed.duration - 0.05);
+
+  if (playerState.countIn && from <= 0.001) {
+    playerState.status = "countin";
+    updatePlayerBar();
+    await countIn(playerState.bpm, 4);
+    if (playerState.status !== "countin") return; // stopped during the count-in
+  }
+
+  tabPlayer.load(parsed, { bpm: playerState.bpm });
+  tabPlayer.position = from;
+  const started = await tabPlayer.play({
+    from,
+    loop: playerState.loop,
+    onLine: highlightRange,
+    onState: (status) => {
+      if (status === "ended" || status === "stopped" || status === "paused") {
+        playerState.status = status;
+        if (status !== "paused") stopTicker();
+        updatePlayerBar();
+      }
+    },
+    onEnd: () => {
+      stopTicker();
+      highlightRange(null);
+    },
+  });
+
+  playerState.status = started ? "playing" : "stopped";
+  if (started) startTicker();
+  updatePlayerBar();
+}
+
+async function togglePlayer(song) {
+  if (playerState.status === "playing") {
+    tabPlayer.pause();
+    stopTicker();
+    playerState.status = "paused";
+  } else if (playerState.status === "paused") {
+    await tabPlayer.resume({ loop: playerState.loop });
+    playerState.status = "playing";
+    startTicker();
+  } else {
+    await startPlayer(song);
+  }
+  updatePlayerBar();
+}
+
+function changeBpm(delta, song) {
+  playerState.bpm = Math.min(240, Math.max(40, playerState.bpm + delta));
+  localStorage.setItem("osr.player.bpm", String(playerState.bpm));
+  if (playerState.status === "playing" && playerState.parsed && playerState.parsed.duration) {
+    const fraction = tabPlayer.elapsed() / playerState.parsed.duration;
+    tabPlayer.stop();
+    startPlayer(song, { fraction });
+  } else {
+    updatePlayerBar();
+  }
+}
+
+function wirePlayer(song) {
+  const button = document.getElementById("play-tab");
+  if (!button) return;
+
+  button.addEventListener("click", () => {
+    playerState.open = true;
+    togglePlayer(song);
+  });
+  document.getElementById("player-toggle").addEventListener("click", () => togglePlayer(song));
+  document.getElementById("player-stop").addEventListener("click", () => stopPlayer());
+  document.getElementById("player-bpm-down").addEventListener("click", () => changeBpm(-5, song));
+  document.getElementById("player-bpm-up").addEventListener("click", () => changeBpm(5, song));
+
+  const countButton = document.getElementById("player-countin");
+  countButton.addEventListener("click", () => {
+    playerState.countIn = !playerState.countIn;
+    localStorage.setItem("osr.player.countin", playerState.countIn ? "on" : "off");
+    countButton.classList.toggle("is-on", playerState.countIn);
+    countButton.setAttribute("aria-pressed", String(playerState.countIn));
+  });
+
+  const loopButton = document.getElementById("player-loop");
+  loopButton.addEventListener("click", () => {
+    playerState.loop = !playerState.loop;
+    tabPlayer.loop = playerState.loop;
+    localStorage.setItem("osr.player.loop", playerState.loop ? "on" : "off");
+    loopButton.classList.toggle("is-on", playerState.loop);
+    loopButton.setAttribute("aria-pressed", String(playerState.loop));
+  });
+
+  updatePlayerBar();
 }
 
 // --- accounts -----------------------------------------------------------
@@ -1824,6 +2048,7 @@ function wire() {
   });
 
   wireComments(song);
+  wirePlayer(song);
 
   document
     .getElementById("export-tab")

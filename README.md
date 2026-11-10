@@ -58,6 +58,9 @@ The app also runs on any static host with **guest mode only**: without
 - **Simplify** — strips extensions and slash basses (`B7` → `B`, `C#7` → `C#`)
 - **Text size** A− / A+
 - **Save** to My tabs (localStorage), **Export .txt**, **Print / PDF**
+- **Play tab** — plays what is written: ASCII tablature note by note, or the
+  chord lines one bar each, with synthesized plucks, BPM, count-in and loop,
+  highlighting the line that is sounding
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play
@@ -195,6 +198,17 @@ it stays in your browser.
 - Reference tones are short triangle-wave envelopes; the microphone is stopped
   and the AudioContext closed whenever the page or tuning changes
 
+`js/player.js`
+- Parses a sheet into timed events: contiguous ASCII tablature blocks are read
+  column by column (one character ≈ a 16th note, two-digit frets supported) and
+  each column becomes a chord of MIDI notes from the song's tuning; otherwise
+  the chord lines play one bar per chord, honouring transpose/flats/simplify
+- Karplus-Strong plucks (noise burst into a damped delay line), scheduled ahead
+  on the Web Audio clock; the transport tracks position, pause/resume, loop and
+  a four-click count-in
+- The reader highlights every line of the sounding block (or chord line) and
+  scrolls it into view
+
 ## Security notes
 
 - Passwords are never stored or logged in clear text; scrypt uses a per-user
@@ -227,6 +241,10 @@ it stays in your browser.
 - The tuner is chromatic with a fixed A4 = 440 Hz: it detects one note at a time,
   has no strobe or polyphonic display and no per-instrument calibration beyond
   the reference tones
+- The tab player is an approximation, not a transcription: tablature timing
+  assumes one character per 16th note, chord playback uses generated voicings
+  (one bar per chord) rather than the recorded guitar, and transposition shifts
+  chord playback but not tablature fret numbers
 - Playlists, saved tabs and stats are per account on that server only
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only

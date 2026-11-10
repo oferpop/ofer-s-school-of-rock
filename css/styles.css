@@ -2164,6 +2164,55 @@ input {
   border-top: none;
 }
 
+/* ---------- tab player ---------- */
+
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #33333a;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1d1c17, #161512);
+}
+
+.player-bar[hidden] {
+  display: none;
+}
+
+.player-bar .pill.primary .ico {
+  font-size: 11px;
+}
+
+.player-time {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-kind {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+}
+
+.sheet .line.is-playing {
+  background: linear-gradient(90deg, rgba(255, 210, 63, 0.14), rgba(255, 210, 63, 0));
+  box-shadow: -6px 0 0 rgba(255, 210, 63, 0.55);
+  border-radius: 3px;
+}
+
+.sheet .section.is-playing {
+  color: #fff;
+}
+
+.pill[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
 /* ---------- responsive ---------- */
 
 @media (max-width: 1000px) {
