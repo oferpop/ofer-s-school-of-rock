@@ -1,3 +1,9 @@
 .DS_Store
 Thumbs.db
 *.log
+
+# REA capture bundle (contains recorded songsterr.com content)
+/songsterr-agent-env/
+
+# Local accounts database
+/data/
