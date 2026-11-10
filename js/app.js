@@ -288,16 +288,51 @@ function songCard(song) {
     </article>`;
 }
 
+function popularSongs() {
+  return songs
+    .filter((song) => !isImported(song))
+    .sort((a, b) => b.views - a.views)
+    .slice(0, 6);
+}
+
 function exploreView() {
   const list = filteredSongs();
   const types = ["all", "chords", "tabs", "ukulele", "bass"];
   return `
     <main class="ws">
-      <section class="hero">
-        <h1>Explore tab catalog</h1>
+      <section class="hero home-hero">
+        <h1>Find a tab and start playing</h1>
         <p class="hero-sub">${fmt(songs.length)} songs · chords, tabs and ukulele arrangements${
           imported.length ? ` · ${imported.length} imported tab${imported.length === 1 ? "" : "s"}` : ""
         } · <a class="learn-link" href="#/learn">new here? start with the lessons</a></p>
+        <form class="hero-search" id="hero-search" role="search">
+          <input id="hero-search-input" type="search" placeholder="Search songs, artists or keys" autocomplete="off"
+                 value="${esc(state.query)}" aria-label="Search songs, artists or keys" />
+          <button type="submit" class="pill primary">Search</button>
+        </form>
+      </section>
+
+      <section class="popular">
+        <div class="popular-head">
+          <h2>Popular right now</h2>
+          <a href="#/charts">All charts</a>
+        </div>
+        <ol class="popular-list">
+          ${popularSongs()
+            .map(
+              (song, i) => `<li>
+                <span class="chart-rank">${i + 1}</span>
+                <a class="chart-main" href="${songHref(song)}">
+                  <strong>${esc(song.title)}</strong>
+                  <span class="dim">${esc(song.artist)}</span>
+                </a>
+                <span class="chart-extra"><span class="star">★</span> ${song.rating.toFixed(1)} · ${fmt(
+                  song.views,
+                )}</span>
+              </li>`,
+            )
+            .join("")}
+        </ol>
       </section>
 
       <div class="filters">
@@ -1544,6 +1579,15 @@ function wire() {
     if (route().view !== "explore") go("#/explore");
     else render();
   });
+
+  const heroSearch = document.getElementById("hero-search");
+  if (heroSearch) {
+    heroSearch.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.query = document.getElementById("hero-search-input").value.trim();
+      render();
+    });
+  }
 
   const sort = document.getElementById("sort");
   if (sort) {
