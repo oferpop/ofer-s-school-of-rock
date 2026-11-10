@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261110g";
+import { songs, byId, versionsOf } from "./data.js?v=20261110h";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261110g";
+} from "./chords.js?v=20261110h";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261110g";
+} from "./pro.js?v=20261110h";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261110g";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261110g";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261110g";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110g";
-import { renderStaff } from "./staff.js?v=20261110g";
+} from "./auth.js?v=20261110h";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261110h";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261110h";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110h";
+import { renderStaff } from "./staff.js?v=20261110h";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -60,6 +60,8 @@ const state = {
   picker: "",
   backupNote: "",
   display: localStorage.getItem("osr.display") || "tab",
+  layout: localStorage.getItem("osr.layout") || "cards",
+  sortDir: "desc",
   showVideo: false,
   videoEditing: false,
   videoError: "",
@@ -174,6 +176,13 @@ const esc = (s) =>
 
 const fmt = (n) => n.toLocaleString("en-US");
 
+// 842,113 -> "842K", 1,204,552 -> "1.2M" (the compact "hits" column).
+const compact = (n) => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+  return String(n);
+};
+
 // --- routing ------------------------------------------------------------
 
 function route() {
@@ -280,8 +289,11 @@ function filteredSongs() {
       s.key.toLowerCase() === q;
     return matchesType && matchesQuery;
   });
-  if (state.sort === "rating") list = [...list].sort((a, b) => b.rating - a.rating);
-  else if (state.sort === "views") list = [...list].sort((a, b) => b.views - a.views);
+  const direction = state.sortDir === "asc" ? 1 : -1;
+  if (state.sort === "rating") list = [...list].sort((a, b) => (a.rating - b.rating) * direction);
+  else if (state.sort === "views") list = [...list].sort((a, b) => (a.views - b.views) * direction);
+  else if (state.sort === "title")
+    list = [...list].sort((a, b) => a.title.localeCompare(b.title) * (state.sortDir === "desc" ? -1 : 1));
   return list;
 }
 
@@ -356,6 +368,7 @@ function featuredBlock() {
 function exploreView() {
   const list = filteredSongs();
   const types = ["all", "chords", "tabs", "ukulele", "bass"];
+  const listMode = state.layout === "list";
   return `
     <main class="ws">
       <section class="hero home-hero">
@@ -412,12 +425,16 @@ function exploreView() {
             )
             .join("")}
         </div>
+        <div class="layout-toggle pill-group" role="group" aria-label="Layout">
+          <button class="pill sq ${listMode ? "" : "is-on"}" data-layout="cards" aria-pressed="${!listMode}">Cards</button>
+          <button class="pill sq ${listMode ? "is-on" : ""}" data-layout="list" aria-pressed="${listMode}">List</button>
+        </div>
         <label class="sort">
           Sort
           <select id="sort">
             <option value="relevance" ${state.sort === "relevance" ? "selected" : ""}>Relevance</option>
             <option value="rating" ${state.sort === "rating" ? "selected" : ""}>Rating</option>
-            <option value="views" ${state.sort === "views" ? "selected" : ""}>Views</option>
+            <option value="views" ${state.sort === "views" ? "selected" : ""}>Hits</option>
           </select>
         </label>
       </div>
@@ -426,10 +443,48 @@ function exploreView() {
         state.query ? ` for “${esc(state.query)}”` : ""
       }</p>
 
-      <div class="results">
-        ${list.length ? list.map(songCard).join("") : `<p class="empty">No tabs match that search yet.</p>`}
-      </div>
+      ${
+        list.length
+          ? listMode
+            ? songTable(list)
+            : `<div class="results">${list.map(songCard).join("")}</div>`
+          : `<p class="empty">No tabs match that search yet.</p>`
+      }
     </main>`;
+}
+
+function sortArrow(key) {
+  if (state.sort !== key) return "";
+  return state.sortDir === "asc" ? " ↑" : " ↓";
+}
+
+function songTable(list) {
+  const header = (key, label) =>
+    `<button class="th-sort ${state.sort === key ? "is-on" : ""}" data-sort="${key}">${label}${sortArrow(key)}</button>`;
+  return `
+    <div class="tab-table" role="table" aria-label="Tabs">
+      <div class="tab-row tab-head" role="row">
+        <span>${header("title", "Song")}</span>
+        <span>Artist</span>
+        <span class="num">${header("rating", "Rating")}</span>
+        <span class="num">${header("views", "Hits")}</span>
+        <span class="type-col">Type</span>
+      </div>
+      ${list
+        .map(
+          (song) => `<a class="tab-row" role="row" href="${songHref(song)}">
+            <span class="tab-song">
+              <strong>${esc(song.title)}</strong>
+              ${isImported(song) ? `<span class="badge badge-import">Imported</span>` : ""}
+            </span>
+            <span class="dim">${esc(song.artist)}</span>
+            <span class="num">${isImported(song) ? "—" : `<span class="star">★</span> ${song.rating.toFixed(1)}`}</span>
+            <span class="num dim">${isImported(song) ? "—" : compact(song.views)}</span>
+            <span class="type-col"><span class="badge">${TYPE_LABEL[song.type] || "Tab"}</span></span>
+          </a>`,
+        )
+        .join("")}
+    </div>`;
 }
 
 // --- sheet --------------------------------------------------------------
@@ -1934,9 +1989,30 @@ function wire() {
   if (sort) {
     sort.addEventListener("change", () => {
       state.sort = sort.value;
+      state.sortDir = sort.value === "title" ? "asc" : "desc";
       render();
     });
   }
+
+  document.querySelectorAll("[data-layout]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.layout = btn.dataset.layout;
+      localStorage.setItem("osr.layout", state.layout);
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-sort]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.sort;
+      if (state.sort === key) state.sortDir = state.sortDir === "desc" ? "asc" : "desc";
+      else {
+        state.sort = key;
+        state.sortDir = key === "title" ? "asc" : "desc";
+      }
+      render();
+    });
+  });
 
   document.querySelectorAll("[data-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
