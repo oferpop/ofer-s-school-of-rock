@@ -17,7 +17,6 @@ git clone https://github.com/oferpop/ofer-s-school-of-rock.git
 cd ofer-s-school-of-rock
 python3 server.py                # http://127.0.0.1:4173
 ```
-
 No build step, no npm install, no third-party packages. `server.py` serves the
 static files and the accounts API, and creates `data/osr.db` (SQLite) on first
 run. Plain ES modules still need to be served over HTTP, so opening
@@ -25,6 +24,16 @@ run. Plain ES modules still need to be served over HTTP, so opening
 
 The app also runs on any static host with **guest mode only**: without
 `server.py` the signup/login pages explain that accounts need the local server.
+
+### Deploy
+
+- **GitHub Pages** — `.github/workflows/pages.yml` publishes `index.html`,
+  `css/`, `js/` and `favicon.svg` on every push to `main`. It is a static
+  deployment: guest mode, playlists, metronome, tuner, videos, ratings, backup
+  and print all work; accounts and comments need the Python server.
+- **Full app** — run `python3 server.py` on a host with a persistent disk (the
+  SQLite file lives in `data/`), behind a TLS proxy. Set `HOST`/`PORT` to bind
+  elsewhere, e.g. `HOST=0.0.0.0 PORT=8080 python3 server.py`.
 
 ## What's implemented
 
