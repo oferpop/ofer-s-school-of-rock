@@ -1099,8 +1099,12 @@ async function initAuth() {
   const result = await probe();
   state.authAvailable = result.available;
   // Nothing about the header changes for a guest, so do not re-render and
-  // invalidate handlers bound by the first render.
-  if (!result.user) return;
+  // invalidate handlers bound by the first render — except on the auth pages,
+  // where the "accounts need the server" notice depends on the probe.
+  if (!result.user) {
+    if (route().view === "auth") render();
+    return;
+  }
   state.user = result.user;
   const remote = await pullState();
   if (remote.state && !emptyState(remote.state)) applyState(remote.state);

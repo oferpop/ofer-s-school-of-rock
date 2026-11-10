@@ -26,6 +26,9 @@ jobs:
         run: |
           mkdir -p _site
           cp -r index.html css js favicon.svg _site/
+          # Pages has no API; tell the client so it skips a doomed probe.
+          sed -i 's|<link rel="icon" href="favicon.svg"|<meta name="osr-static" content="true" />\n    <link rel="icon" href="favicon.svg"|' _site/index.html
+          grep -q 'osr-static' _site/index.html
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -36,8 +36,10 @@ async function request(path, { method = "GET", body, keepalive = false } = {}) {
 }
 
 // A static host (no server.py) answers /api/... with 404 HTML or nothing at
-// all, so both cases mean "accounts are not available here".
+// all, so both cases mean "accounts are not available here". The Pages build
+// marks itself so the app can skip a request it knows will fail.
 export async function probe() {
+  if (document.querySelector('meta[name="osr-static"]')) return { available: false, user: null };
   const res = await request("/auth/me");
   if (res.offline || !res.data) return { available: false, user: null };
   if (res.status === 200 && "user" in res.data) return { available: true, user: res.data.user || null };
