@@ -959,6 +959,293 @@ the solo, paste a transcription you have access to into Import
 (top navigation) — it opens in this same reader with transpose,
 diagrams, autoscroll and print.`,
   },
+  {
+    id: "under-the-bridge",
+    artist: "Red Hot Chili Peppers",
+    title: "Under the Bridge",
+    type: "chords",
+    tuning: "E A D G B E",
+    key: "E",
+    capo: "No capo",
+    difficulty: "intermediate",
+    rating: 4.9,
+    votes: 8940,
+    views: 4_602_118,
+    saves: 198_220,
+    comments: 812,
+    author: "OSR transcription",
+    body: `[Intro]
+E   B   C#m   G#m   A
+E   B   C#m   A
+
+[Verse 1]
+E   B   C#m   G#m   A
+E   B   C#m   A   Emaj7
+
+[Verse 2]
+E   B   C#m   G#m   A
+E   B   C#m   A   Emaj7
+
+[Chorus]
+F#m   E   B/F#   F#m
+F#m   E   B/F#   F#m
+
+[Interlude]
+E   B   C#m   G#m   A
+E   B   C#m   A
+
+[Verse 3]
+E   B   C#m   G#m   A
+E   B   C#m   A   Emaj7
+
+[Chorus]
+F#m   E   B/F#   F#m
+F#m   E   B/F#   F#m
+
+[Bridge]
+A   Am7   G6   Fmaj7
+A   Am7   G6   Fmaj7
+Fmaj7   E7   Gmaj7
+
+[Coda]
+A   Am   G6   Fmaj7
+A   Am   G6   Fmaj7
+
+[Playing notes]
+Open chords ring the whole way through — let every voicing overlap
+into the next one. The bridge is the only place the harmony leaves
+E major, sliding down A - Am7 - G6 - Fmaj7 while everything gets
+quieter. Keep the strum light; the song is carried by space, not by
+volume.`,
+  },
+  {
+    id: "californication",
+    artist: "Red Hot Chili Peppers",
+    title: "Californication",
+    type: "chords",
+    tuning: "E A D G B E",
+    key: "Am",
+    capo: "No capo",
+    difficulty: "novice",
+    rating: 4.9,
+    votes: 11_204,
+    views: 6_881_940,
+    saves: 287_550,
+    comments: 1_042,
+    author: "OSR transcription",
+    body: `[Intro]
+Am   F   Am   F
+
+[Verse 1]
+Am   F   Am   F
+C    G   F    Dm
+
+[Interlude]
+Am   F   Am   F
+
+[Verse 2]
+Am   F   Am   F
+C    G   F    Dm
+
+[Pre-Chorus]
+Am   Fmaj7   Am   Fmaj7
+Am   Fmaj7   Am   Fmaj7
+
+[Chorus]
+C    G   Dm   Am
+C    G   Dm
+
+[Verse 3]
+Am   F   Am   F
+C    G   F    Dm
+
+[Pre-Chorus]
+Am   Fmaj7   Am   Fmaj7
+
+[Chorus]
+C    G   Dm   Am
+C    G   Dm
+
+[Solo]
+F#m   D   Bm   A   E
+F#m   D   Bm   A   E
+
+[Outro]
+Am   F   Am   F
+
+[Playing notes]
+Two chords carry the whole verse — Am and F — and the C - G - F - Dm
+lift at the end of each line is what makes it move. Pre-chorus swaps
+F for Fmaj7, a single finger change that brightens it. The solo
+section is the only place the key shifts, into F# minor.`,
+  },
+  {
+    id: "scar-tissue",
+    artist: "Red Hot Chili Peppers",
+    title: "Scar Tissue",
+    type: "chords",
+    tuning: "E A D G B E",
+    key: "F",
+    capo: "No capo",
+    difficulty: "novice",
+    rating: 4.8,
+    votes: 7_318,
+    views: 3_940_505,
+    saves: 164_880,
+    comments: 604,
+    author: "OSR transcription",
+    body: `[Intro]
+F   C   Dm   C
+F   Fsus2   C   Dm
+
+[Verse 1]
+F   Dm   F   Dm
+
+[Chorus]
+F   Dm   F   Dm
+F   Dm
+
+[Verse 2]
+F   Dm   F   Dm
+
+[Chorus]
+F   Dm   F   Dm
+F   Dm
+
+[Instrumental]
+F   C   Dm   C
+
+[Verse 3]
+F   Dm   F   Dm
+
+[Chorus]
+F   Dm   F   Dm
+F   Dm
+
+[Instrumental]
+F   C   Dm   C
+
+[Coda]
+Dm
+
+[Playing notes]
+The intro is the whole song in miniature: F and C moving to Dm, with
+Fsus2 as a passing colour. Verses and choruses alternate F and Dm and
+almost nothing else, so the interest comes from the slide down to the
+bass note and from leaving strings ringing. Play it slowly — the
+tempo is much slower than it feels.`,
+  },
+  {
+    id: "otherside",
+    artist: "Red Hot Chili Peppers",
+    title: "Otherside",
+    type: "chords",
+    tuning: "E A D G B E",
+    key: "Am",
+    capo: "No capo",
+    difficulty: "novice",
+    rating: 4.8,
+    votes: 6_902,
+    views: 3_275_640,
+    saves: 141_002,
+    comments: 498,
+    author: "OSR transcription",
+    body: `[Intro]
+Am   F   C   G
+
+[Verse 1]
+Am   Em   Am   Em
+Am   Em   G    A
+
+[Verse 2]
+Am   Em   Am   Em
+Am   Em   G    A
+
+[Chorus]
+Am   F   C   G
+Am   F   C   G
+
+[Verse 3]
+Am   Em   Am   Em
+Am   Em   G    A
+
+[Chorus]
+Am   F   C   G
+Am   F   C   G
+
+[Instrumental]
+Am   F   C   G
+Am   F   C   G
+
+[Bridge]
+Am   F   C   G
+
+[Guitar Solo]
+Am   F   C   G
+Am   F   C   G
+
+[Playing notes]
+Four chords, one loop: Am - F - C - G. The verse tightens that to
+Am and Em, which is why it feels coiled before the chorus opens up.
+G to A at the end of each verse is the only chromatic move in the
+song. Keep the right hand even and let the open strings ring.`,
+  },
+  {
+    id: "dani-california",
+    artist: "Red Hot Chili Peppers",
+    title: "Dani California",
+    type: "chords",
+    tuning: "E A D G B E",
+    key: "Am",
+    capo: "No capo",
+    difficulty: "intermediate",
+    rating: 4.8,
+    votes: 5_764,
+    views: 2_684_310,
+    saves: 118_447,
+    comments: 431,
+    author: "OSR transcription",
+    body: `[Intro]
+Am   G   Dm   Am
+Am   G   Dm   Am
+
+[Verse 1]
+Am   G   Dm   Am
+Am   G   Dm   Am
+
+[Chorus]
+F    C   Dm   G
+F    C   Dm   G
+
+[Verse 2]
+Am   G   Dm   Am
+Am   G   Dm   Am
+
+[Chorus]
+F    C   Dm   G
+F    C   Dm   G
+
+[Instrumental]
+Am   G   Dm   Am
+Am   G   Dm   Am
+
+[Verse 3]
+Am   G   Dm   Am
+Am   G   Dm   Am
+
+[Chorus]
+F    C   Dm   G
+F    C   Dm   G
+
+[Outro]
+Am   G   Dm   Am
+
+[Playing notes]
+The verse is a two-bar descent, Am - G - Dm - Am, that never quite
+resolves; the chorus answers it with F - C - Dm - G. Hold the shapes
+and let the low E ring under Am and G. Fast song, so keep the changes
+ahead of the beat rather than on it.`,
+  },
 ];
 
 export function byId(id) {

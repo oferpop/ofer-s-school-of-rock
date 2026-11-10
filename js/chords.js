@@ -169,7 +169,9 @@ function scoreShape(frets, baseFret, chord) {
       continue;
     }
     sounding++;
-    const abs = baseFret === 0 ? f : baseFret + f;
+    // Frets are stored relative to the shape: 0 means open, and in a shape that
+    // starts at baseFret, 1 means "on the base fret".
+    const abs = baseFret === 0 ? f : baseFret + f - 1;
     span = Math.max(span, abs);
     const note = (OPEN_STRING_NOTES[s] + abs) % 12;
     // A slash bass may sit outside the chord's own tones (e.g. C/B), but every
@@ -202,7 +204,9 @@ function scoreShape(frets, baseFret, chord) {
 function generateShape(chord) {
   let best = null;
   for (let base = 0; base <= 9; base++) {
-    const pool = base === 0 ? [-1, 0, 1, 2, 3, 4] : [-1, 0, 1, 2, 3, 4];
+    // Open position can use open strings; above it every finger sits on a fret
+    // counted from the base, so 0 is not a valid value there.
+    const pool = base === 0 ? [-1, 0, 1, 2, 3, 4] : [-1, 1, 2, 3, 4];
     const total = Math.pow(pool.length, 6);
     for (let n = 0; n < total; n++) {
       let k = n;
@@ -220,6 +224,19 @@ function generateShape(chord) {
 
 const shapeCache = new Map();
 
+// Curated shapes are written in absolute frets. Anything past the 4th fret is
+// re-based so the diagram window starts at the lowest fretted note, which is
+// also what the fret marker shows.
+function fromCurated(frets) {
+  if (Math.max(...frets) <= 4) return { frets: [...frets], baseFret: 0 };
+  const played = frets.filter((f) => f > 0);
+  const base = Math.min(...played);
+  return {
+    frets: frets.map((f) => (f <= 0 ? -1 : f - base + 1)),
+    baseFret: base,
+  };
+}
+
 export function shapeFor(chord) {
   const key = chord;
   if (shapeCache.has(key)) return shapeCache.get(key);
@@ -227,16 +244,14 @@ export function shapeFor(chord) {
   const plain = simplifyChord(chord);
   const hasSlashBass = chord.includes("/");
   if (!hasSlashBass && CURATED[chord]) {
-    shape = { frets: CURATED[chord], baseFret: 0 };
-    if (Math.max(...shape.frets) > 4) shape.baseFret = 1;
+    shape = fromCurated(CURATED[chord]);
   } else if (!hasSlashBass && CURATED[plain]) {
-    shape = { frets: CURATED[plain], baseFret: 0 };
-    if (Math.max(...shape.frets) > 4) shape.baseFret = 1;
+    shape = fromCurated(CURATED[plain]);
   } else {
     // Slash chords go through the generator so the bass note is enforced.
     const generated = generateShape(chord) || generateShape(plain);
     if (generated) shape = { frets: generated.frets, baseFret: generated.baseFret };
-    else if (CURATED[plain]) shape = { frets: CURATED[plain], baseFret: 0 };
+    else if (CURATED[plain]) shape = fromCurated(CURATED[plain]);
   }
   shapeCache.set(key, shape);
   return shape;

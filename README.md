@@ -83,11 +83,12 @@ it stays in your browser.
 - Sign up / Log in are inert placeholders (no auth)
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only
-- Catalog is 19 hand-written songs — 14 public-domain pieces, one
-  chords-and-structure chart for "The Way Things Go" (no lyrics), one for
-  "Can't Stop" (harmony and song map only — riff and solo go through Import)
-  and three original OSR solo studies (E minor rock, 12-bar blues in A,
-  country in G)
+- Catalog is 24 hand-written songs — 14 public-domain pieces, three original
+  OSR solo studies (E minor rock, 12-bar blues in A, country in G), and seven
+  harmony-and-structure charts (The Way Things Go, plus Can't Stop, Under the
+  Bridge, Californication, Scar Tissue, Otherside and Dani California). The
+  RHCP entries carry chords, sections and playing notes only: no lyrics, and
+  riff/solo transcriptions go through `#/import` instead
 
 ## Layout notes
 
