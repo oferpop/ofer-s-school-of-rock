@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261110e";
+import { songs, byId, versionsOf } from "./data.js?v=20261110f";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261110e";
+} from "./chords.js?v=20261110f";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261110e";
+} from "./pro.js?v=20261110f";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261110e";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261110e";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261110e";
-import { parseSong, TabPlayer, countIn } from "./player.js?v=20261110e";
-import { renderStaff } from "./staff.js?v=20261110e";
+} from "./auth.js?v=20261110f";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261110f";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261110f";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110f";
+import { renderStaff } from "./staff.js?v=20261110f";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -434,18 +434,9 @@ function exploreView() {
 
 // --- sheet --------------------------------------------------------------
 
-const TAB_LINE_RE = /^[A-Ga-g]\|/;
-
-// Returns the last line of a contiguous tablature block, or -1.
-function tabBlockEnd(lines, start) {
-  if (!TAB_LINE_RE.test(lines[start].trim())) return -1;
-  let end = start;
-  while (end + 1 < lines.length && TAB_LINE_RE.test(lines[end + 1].trim())) end += 1;
-  return end > start ? end : -1;
-}
-
 function hasTabBlocks(song) {
-  return song.body.split("\n").some((line) => TAB_LINE_RE.test(line.trim()));
+  const lines = song.body.split("\n");
+  return lines.some((_, index) => tabBlockEnd(lines, index) !== -1);
 }
 
 function renderSheet(song, maxLines = 0) {
@@ -454,7 +445,6 @@ function renderSheet(song, maxLines = 0) {
   const chordTokens = chordTokensByLine(song.body);
   const out = [];
   let parsed = null;
-  let inTabBlock = false;
 
   const staffFor = (start, end) => {
     if (!parsed) {
@@ -477,17 +467,14 @@ function renderSheet(song, maxLines = 0) {
     return `<div class="staff-block" data-line-start="${start}" data-line-end="${end}">${renderStaff(events)}</div>`;
   };
 
-  const renderLine = (line, index) => {
+  const renderLine = (line, index, inTab = false) => {
     const trimmed = line.trim();
     if (!trimmed) {
-      inTabBlock = false;
       return `<div class="line" data-line="${index}">&nbsp;</div>`;
     }
     if (/^\[.*\]$/.test(trimmed)) {
-      inTabBlock = false;
       return `<h4 class="section" data-line="${index}">${esc(trimmed.slice(1, -1))}</h4>`;
     }
-    if (TAB_LINE_RE.test(trimmed)) inTabBlock = true;
 
     const allowed = new Set(chordTokens[index]);
     const tokens = line.split(/(\s+)/);
@@ -504,7 +491,7 @@ function renderSheet(song, maxLines = 0) {
       })
       .join("");
 
-    return `<div class="line${inTabBlock ? " tabline" : ""}" data-line="${index}">${rendered}</div>`;
+    return `<div class="line${inTab ? " tabline" : ""}" data-line="${index}">${rendered}</div>`;
   };
 
   let index = 0;
@@ -516,7 +503,7 @@ function renderSheet(song, maxLines = 0) {
         if (staff) out.push(staff);
       }
       if (state.display !== "notes") {
-        for (let i = index; i <= end; i++) out.push(renderLine(lines[i], i));
+        for (let i = index; i <= end; i++) out.push(renderLine(lines[i], i, true));
       }
       index = end + 1;
       continue;

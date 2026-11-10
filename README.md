@@ -133,6 +133,9 @@ The app also runs on any static host with **guest mode only**: without
 - Paste any chord sheet or ASCII tab, give it a title, artist, key, tuning and
   capo, and it opens in the full reader — transpose, diagrams, simplify,
   autoscroll and print all work on it
+- Labelled tablature (`e|--0--`) and unlabelled Ultimate Guitar style blocks
+  (4–6 numeric rows) are recognised as tab, so the player and the Notes view
+  work on pasted tabs too
 - Imported tabs are listed in the catalog with an `Imported` badge, sort and
   search alongside the shipped ones, and can be deleted from the reader
 - They live in `localStorage` (`osr.imported.v1`) and never touch the repo, so

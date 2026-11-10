@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261110e";
+} from "./chords.js?v=20261110f";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -53,14 +53,46 @@ function chordNotes(token) {
   return [...new Set(notes)];
 }
 
+const LABELED_TAB = /^[A-Ga-g]\|/;
+const UG_ROW = /^[0-9|\-/\\~hpbxX()\s]+$/i;
+
+function isUgRow(line) {
+  const text = line.trim();
+  return text.length >= 8 && /[-|]/.test(text) && UG_ROW.test(text);
+}
+
+/**
+ * Last line of a tablature block starting at `start`, or -1.
+ * Handles labelled blocks (`e|--0--`) and unlabelled Ultimate Guitar style
+ * blocks of 4–6 numeric rows.
+ */
+export function tabBlockEnd(lines, start) {
+  const first = lines[start].trim();
+  if (LABELED_TAB.test(first)) {
+    let end = start;
+    while (end + 1 < lines.length && LABELED_TAB.test(lines[end + 1].trim())) end += 1;
+    return end > start ? end : -1;
+  }
+
+  if (!isUgRow(first)) return -1;
+  let end = start;
+  while (end + 1 < lines.length && isUgRow(lines[end + 1])) end += 1;
+  const rows = lines.slice(start, end + 1);
+  const count = rows.length;
+  if (count < 4 || count > 6) return -1;
+
+  const lengths = rows.map((row) => row.trim().length);
+  if (Math.max(...lengths) - Math.min(...lengths) > 2) return -1;
+  if (!rows.some((row) => /\d/.test(row))) return -1;
+  return end;
+}
+
 const TAB_LINE = /^[A-Ga-g]\|/;
 const FRET_TOKEN = /\d+/g;
 
 function tabBlockAt(lines, start) {
-  if (!TAB_LINE.test(lines[start].trim())) return null;
-  let end = start;
-  while (end + 1 < lines.length && TAB_LINE.test(lines[end + 1].trim())) end += 1;
-  return end > start ? { start, end } : null;
+  const end = tabBlockEnd(lines, start);
+  return end === -1 ? null : { start, end };
 }
 
 /**
@@ -90,7 +122,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       const rows = [];
       for (let i = block.start; i <= block.end; i++) {
         const raw = lines[i].trim();
-        rows.push({ body: raw.slice(2), letter: raw[0] });
+        const labeled = LABELED_TAB.test(raw);
+        rows.push({ body: labeled ? raw.slice(2) : raw, letter: labeled ? raw[0] : null });
       }
       const columns = new Map();
       rows.forEach((row, rowIndex) => {
