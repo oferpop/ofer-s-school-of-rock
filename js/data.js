@@ -883,6 +883,147 @@ Notes: G major in open position, all picked with a steady
 "down-up" hand. The F# on the D string (fret 4) is the only
 note outside the G pentatonic — it is what makes it sound country.`,
   },
+  {
+    id: "cant-stop",
+    artist: "Red Hot Chili Peppers",
+    title: "Can't Stop",
+    type: "tabs",
+    tuning: "E A D G B E",
+    key: "Em",
+    capo: "No capo",
+    difficulty: "intermediate",
+    rating: 4.9,
+    votes: 5142,
+    views: 3_118_460,
+    saves: 129_774,
+    comments: 642,
+    author: "OSR transcription",
+    body: `[Intro]
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Verse 1]
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Chorus]
+G  D  Bm  C
+G  D  Bm  C
+
+[Verse 2]
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Chorus]
+G  D  Bm  C
+G  D  Bm  C
+
+[Interlude]
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Break]
+Em  D  Bm  C
+
+[Verse 3]
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Chorus]
+G  D  Bm  C
+G  D  Bm  C
+
+[Outro]
+Em  D  Bm  C
+Em  D  Bm  C
+Em  D  Bm  C
+
+[Groove study — original, not the record]
+The whole verse rides one 16th-note pattern. Keep the right hand
+moving non-stop and mute the left hand between notes.
+
+Em
+e|----------------------------------|
+B|----------------------------------|
+G|----------------------------------|
+D|----------0-2-0-----------0-2-0---|
+A|-0--0-2-3-------3-0-2-3-----------|
+E|----------------------------------|
+
+D                 Bm                C
+e|-----------------|-----------------|-----------------|
+B|-----------------|-----------------|-----------------|
+G|-----------------|-----------------|-----------------|
+D|-0-2-0-------0-2-|-4-2-4-------2-0-|-2-0-2-------0---|
+A|-------3-0-2-----|-------4-2-------|-------3-2-0-----|
+E|-----------------|-----------------|-----------------|
+
+[Chorus solo study — original]
+Eight bars over G - D - Bm - C, twice. G major / E minor
+pentatonic, no lyrics needed to play it.
+
+G
+e|-------------------------|
+B|-----------------7-8-10--|
+G|-7-7-9-7-9-7-9-----------|
+D|-------------------------|
+A|-------------------------|
+E|-------------------------|
+
+D
+e|-------------------------|
+B|-10-8-7------------------|
+G|--------9-7-9-7-9-7------|
+D|-------------------------|
+A|-------------------------|
+E|-------------------------|
+
+Bm
+e|---------------------10-8-7-|
+B|-10-8-7-8-10-8-7-8----------|
+G|----------------------------|
+D|----------------------------|
+A|----------------------------|
+E|----------------------------|
+
+C
+e|-7-8-7-------------------|
+B|-------10-8-7-8-7--------|
+G|------------------9-7----|
+D|-------------------------|
+A|-------------------------|
+E|-------------------------|
+
+G                 D
+e|-12-10-8-10-12---|-15-12-10-12-10--|
+B|-----------------|-----------------|
+G|-----------------|-----------------|
+D|-----------------|-----------------|
+A|-----------------|-----------------|
+E|-----------------|-----------------|
+
+Bm                C
+e|-8-7-5-----------|-7---------------|
+B|-------8-7-5-----|---10-8-7--------|
+G|-------------7---|------------------|
+D|-----------------|------------------|
+A|-----------------|------------------|
+E|-----------------|------------------|
+
+Notes: this is a study in the same key, position and feel as the
+record, not a note-for-note transcription of the riff or the solo.
+Lyrics are left out on purpose — play the chart under the vocal.
+Hold the last C, then drop back to the Em groove for the outro.`,
+  },
 ];
 
 export function byId(id) {

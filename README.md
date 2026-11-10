@@ -67,9 +67,11 @@ HTTP, so opening `index.html` from the filesystem will not work.
 - Sign up / Log in are inert placeholders (no auth)
 - "More versions" only shows when another entry shares a title and type
 - No Guitar Pro / Power Tab rendering — chord sheets and ASCII tabs only
-- Catalog is 18 hand-written songs — 14 public-domain pieces, one
-  chords-and-structure chart for "The Way Things Go" (no lyrics) and three
-  original OSR solo studies (E minor rock, 12-bar blues in A, country in G)
+- Catalog is 19 hand-written songs — 14 public-domain pieces, one
+  chords-and-structure chart for "The Way Things Go" (no lyrics), one for
+  "Can't Stop" (chords, structure and original study tabs, no lyrics or
+  note-for-note riff/solo transcription) and three original OSR solo studies
+  (E minor rock, 12-bar blues in A, country in G)
 
 ## Layout notes
 
