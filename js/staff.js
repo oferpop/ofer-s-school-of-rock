@@ -54,6 +54,7 @@ export function renderStaff(events, { columnsPerBar = 16, barsPerRow = 4, width 
       const slot = event.column % columnsPerBar;
       const x = left + barInRow * barWidth + 8 + (slot / columnsPerBar) * (barWidth - 16);
       const notes = [...new Set(event.midi)].sort((a, b) => a - b);
+      let topY = Infinity;
 
       for (const midi of notes) {
         const { position, accidental } = diatonic(midi);
@@ -77,6 +78,7 @@ export function renderStaff(events, { columnsPerBar = 16, barsPerRow = 4, width 
         if (accidental) svg += `<text class="staff-accidental" x="${x - 14}" y="${y + 4}">♯</text>`;
 
         svg += `<ellipse class="staff-head" cx="${x}" cy="${y}" rx="4.8" ry="3.4" transform="rotate(-18 ${x} ${y})" />`;
+        topY = Math.min(topY, y);
       }
 
       const firstY = bottom - (diatonic(notes[0]).position - 30) * 5;
@@ -84,6 +86,15 @@ export function renderStaff(events, { columnsPerBar = 16, barsPerRow = 4, width 
       const stemX = stemUp ? x + 4.2 : x - 4.2;
       const stemY2 = stemUp ? firstY - 26 : firstY + 26;
       svg += `<line class="staff-stem" x1="${stemX}" y1="${firstY}" x2="${stemX}" y2="${stemY2}" />`;
+
+      // A bend gets a small curved arrow above the note it starts on.
+      const hasBend = Array.isArray(event.bend) && event.bend.some((value) => value !== null);
+      if (hasBend && Number.isFinite(topY)) {
+        const bx = x + 6;
+        const by = topY - 5;
+        svg += `<path class="staff-bend" d="M${bx},${by} q 7,-3 9,-12" />`;
+        svg += `<path class="staff-bend-head" d="M${bx + 9},${by - 16} l -4,6 l 8,0 z" />`;
+      }
     }
   }
 

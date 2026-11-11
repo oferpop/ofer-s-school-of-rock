@@ -62,8 +62,10 @@ The app also runs on any static host with **guest mode only**: without
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
   chord lines one bar each, with synthesized plucks, BPM, count-in and loop.
-  Bends (`7b9`), slides (`7/9`, `9\7`) and hammer-ons/pull-offs (`7h9`) are
-  played as pitch glides or articulated note pairs, not as separate columns
+  Bends (`7b9`), bend-and-release (`7b9r7`), slides (`7/9`, `9\7`),
+  hammer-ons/pull-offs (`7h9`) and vibrato (`7~`) are played as pitch movement
+  or articulated note pairs, not as separate columns; the staff draws a bend
+  arrow above the note
 - **Playhead** — a vertical marker follows the exact column being played, with a
   progress bar in the transport; click any point in the tab (or the bar) and
   playback jumps there and continues

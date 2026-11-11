@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111g";
+} from "./chords.js?v=20261111h";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -90,7 +90,7 @@ export function tabBlockEnd(lines, start) {
 const TAB_LINE = /^[A-Ga-g]\|/;
 // A fret, optionally followed by a technique and its target fret: 7b9, 7b(9),
 // 7/9, 9\7, 7h9, 7p9, 7~.
-const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?/g;
+const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*)/g;
 
 function tabBlockAt(lines, start) {
   const end = tabBlockEnd(lines, start);
@@ -142,6 +142,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             fret,
             technique: match[2] || null,
             target: match[3] !== undefined ? Number(match[3]) : null,
+            release: match[4] !== undefined ? Number(match[4]) : null,
+            vibrato: Boolean(match[5]) || match[2] === "~",
           });
         }
       });
@@ -151,13 +153,23 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       ordered.forEach(([column, notes], index) => {
         const midi = [];
         const bend = [];
+        const release = [];
         const technique = [];
+        const vibrato = [];
         for (const note of notes) {
           const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
           midi.push(stringMidi + note.fret);
           bend.push(note.target !== null ? stringMidi + note.target : null);
+          release.push(
+            note.release !== null
+              ? stringMidi + note.release
+              : note.target !== null
+                ? stringMidi + note.fret
+                : null,
+          );
           technique.push(note.technique);
+          vibrato.push(note.vibrato);
         }
         if (!midi.length) return;
         const next = ordered[index + 1];
@@ -170,7 +182,9 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           time: timeOffset + column * step,
           midi,
           bend,
+          release,
           technique,
+          vibrato,
           duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
         });
@@ -336,7 +350,15 @@ export class TabPlayer {
       const delay = (when - this.ctx.currentTime) * 1000;
       this.scheduleVisual(delay, event);
       event.midi.forEach((midi, i) => {
-        this.scheduleNote(midi, when, event.duration, event.bend?.[i] ?? null, event.technique?.[i] ?? null);
+        this.scheduleNote(
+          midi,
+          when,
+          event.duration,
+          event.bend?.[i] ?? null,
+          event.technique?.[i] ?? null,
+          event.release?.[i] ?? null,
+          event.vibrato?.[i] ?? false,
+        );
       });
     }
 
@@ -346,17 +368,17 @@ export class TabPlayer {
     return true;
   }
 
-  scheduleNote(midi, when, duration, bendTo = null, technique = null) {
+  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false) {
     if ((technique === "h" || technique === "p") && bendTo !== null) {
       // Hammer-on / pull-off: articulate the start note, then the target.
       this.pluck(midi, when, Math.min(duration, 0.14));
       this.pluck(bendTo, when + 0.09, Math.max(0.12, duration - 0.09));
       return;
     }
-    this.pluck(midi, when, duration, bendTo, technique);
+    this.pluck(midi, when, duration, bendTo, technique, releaseTo, vibrato);
   }
 
-  pluck(midi, when, duration, bendTo = null, technique = null) {
+  pluck(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false) {
     const ctx = this.ctx;
     if (!ctx) return;
     const cached = this.buffers.get(midi);
@@ -364,17 +386,40 @@ export class TabPlayer {
     if (!cached) this.buffers.set(midi, { buffer });
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+    const end = when + Math.max(0.15, Math.min(2.7, duration));
 
     // Bend or slide: glide the playback rate from the written note to the
     // target fret, so the pitch rises to the note the tab names.
     if (bendTo !== null && midi !== bendTo && technique !== "h" && technique !== "p") {
       const semitones = bendTo - midi;
+      const targetRate = 2 ** (semitones / 12);
       const glide = Math.min(0.2, Math.max(0.07, duration * 0.55));
       source.playbackRate.setValueAtTime(1, when);
-      source.playbackRate.linearRampToValueAtTime(2 ** (semitones / 12), when + glide);
+      source.playbackRate.linearRampToValueAtTime(targetRate, when + glide);
+
+      // 7b9r7: hold the bend, then release back near the end of the note.
+      if (releaseTo !== null) {
+        const releaseRate = 2 ** ((releaseTo - midi) / 12);
+        const releaseAt = Math.max(when + glide + 0.06, end - Math.min(0.22, duration * 0.35));
+        if (releaseAt < end - 0.03) {
+          source.playbackRate.setValueAtTime(targetRate, releaseAt);
+          source.playbackRate.linearRampToValueAtTime(releaseRate, Math.min(end - 0.01, releaseAt + 0.1));
+        }
+      }
     }
+
+    // 7~: a gentle vibrato, about ±10 cents at 5.5 Hz.
+    if (vibrato) {
+      const lfo = ctx.createOscillator();
+      const depth = ctx.createGain();
+      lfo.frequency.value = 5.5;
+      depth.gain.value = 0.006;
+      lfo.connect(depth).connect(source.playbackRate);
+      lfo.start(when + 0.06);
+      lfo.stop(end);
+    }
+
     const gain = ctx.createGain();
-    const end = when + Math.max(0.15, Math.min(2.7, duration));
     gain.gain.setValueAtTime(0.9, when);
     gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.06));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
