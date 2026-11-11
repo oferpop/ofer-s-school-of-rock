@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261110h";
+import { songs, byId, versionsOf } from "./data.js?v=20261111a";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261110h";
+} from "./chords.js?v=20261111a";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261110h";
+} from "./pro.js?v=20261111a";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261110h";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261110h";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261110h";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261110h";
-import { renderStaff } from "./staff.js?v=20261110h";
+} from "./auth.js?v=20261111a";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261111a";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261111a";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111a";
+import { renderStaff } from "./staff.js?v=20261111a";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -558,7 +558,12 @@ function renderSheet(song, maxLines = 0) {
         if (staff) out.push(staff);
       }
       if (state.display !== "notes") {
-        for (let i = index; i <= end; i++) out.push(renderLine(lines[i], i, true));
+        const rowsOut = [];
+        for (let i = index; i <= end; i++) rowsOut.push(renderLine(lines[i], i, true));
+        out.push(
+          `<div class="tab-block" data-line-start="${index}" data-line-end="${end}">` +
+            `<span class="tab-playhead" aria-hidden="true" hidden></span>${rowsOut.join("")}</div>`,
+        );
       }
       index = end + 1;
       continue;
@@ -1230,6 +1235,10 @@ function playerBar() {
       <span class="player-kind dim" id="player-kind">${
         playerState.parsed ? (playerState.parsed.kind === "tab" ? "Tablature" : "Chords") : ""
       }</span>
+      <div class="player-progress" id="player-progress" role="slider" aria-label="Playback position"
+           aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <span class="player-progress-fill" id="player-progress-fill"></span>
+      </div>
     </div>`;
 }
 
@@ -1253,6 +1262,15 @@ function updatePlayerBar() {
   if (time && playerState.parsed) {
     const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
     time.textContent = `${clock(position)} / ${clock(playerState.parsed.duration)}`;
+  }
+
+  if (playerState.parsed && playerState.parsed.duration) {
+    const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+    const pct = Math.max(0, Math.min(100, (position / playerState.parsed.duration) * 100));
+    const fill = document.getElementById("player-progress-fill");
+    const bar = document.getElementById("player-progress");
+    if (fill) fill.style.width = `${pct}%`;
+    if (bar) bar.setAttribute("aria-valuenow", String(Math.round(pct)));
   }
 
   const kind = document.getElementById("player-kind");
@@ -1296,8 +1314,124 @@ function stopPlayer() {
   tabPlayer.stop();
   stopTicker();
   highlightRange(null);
+  clearPlayhead();
   playerState.status = "stopped";
   updatePlayerBar();
+}
+
+// --- playhead & seeking -------------------------------------------------
+
+function ensureParsed(song) {
+  const parsed = parseSong(song, {
+    bpm: playerState.bpm,
+    transpose: state.transpose,
+    flats: state.flats,
+    simplify: state.simplify,
+  });
+  playerState.parsed = parsed;
+  playerState.songId = song.id;
+  playerState.blocks = blockOffsets(parsed);
+  return parsed;
+}
+
+function blockOffsets(parsed) {
+  const map = new Map();
+  for (const event of parsed.events) {
+    const key = event.lines[0];
+    const current = map.get(key);
+    if (!current || event.time < current.start) {
+      map.set(key, { start: event.time, step: parsed.step, end: event.lines[1] });
+    }
+  }
+  return map;
+}
+
+function tabCharWidth(lineEl) {
+  const style = getComputedStyle(lineEl);
+  if (!tabCharWidth.canvas) tabCharWidth.canvas = document.createElement("canvas");
+  const ctx = tabCharWidth.canvas.getContext("2d");
+  ctx.font = `${style.fontSize} ${style.fontFamily}`;
+  return ctx.measureText("0").width || 8;
+}
+
+// Musical columns skip bar lines, so map a column to the character index on screen.
+function visualIndex(text, column) {
+  let seen = 0;
+  for (let i = 2; i < text.length; i++) {
+    if (text[i] === "|") continue;
+    if (seen === column) return i;
+    seen += 1;
+  }
+  return text.length;
+}
+
+function paintEventPlayhead(event) {
+  const entry = playerState.blocks?.get(event.lines[0]);
+  if (!entry) return;
+  const block = document.querySelector(
+    `.tab-block[data-line-start="${event.lines[0]}"][data-line-end="${event.lines[1]}"]`,
+  );
+  if (!block) return;
+  const marker = block.querySelector(".tab-playhead");
+  const row = block.querySelector(".line.tabline");
+  if (!marker || !row) return;
+
+  const column = Math.max(0, Math.round((event.time - entry.start) / entry.step));
+  const left = tabCharWidth(row) * visualIndex(row.textContent, column);
+  document.querySelectorAll(".tab-playhead").forEach((other) => {
+    if (other !== marker) other.hidden = true;
+  });
+  marker.hidden = false;
+  marker.style.left = `${left}px`;
+}
+
+function paintPlayheadAtTime(seconds) {
+  const events = playerState.parsed?.events || [];
+  let best = null;
+  for (const event of events) {
+    if (event.time <= seconds + 0.001) best = event;
+    else break;
+  }
+  if (best) paintEventPlayhead(best);
+}
+
+function clearPlayhead() {
+  document.querySelectorAll(".tab-playhead").forEach((marker) => {
+    marker.hidden = true;
+    marker.style.left = "0px";
+  });
+  const fill = document.getElementById("player-progress-fill");
+  if (fill) fill.style.width = "0%";
+}
+
+function timeAtPoint(song, block, lineEl, clientX) {
+  const entry = playerState.blocks?.get(Number(block.dataset.lineStart));
+  if (!entry) return null;
+  const text = lineEl.textContent;
+  const width = tabCharWidth(lineEl);
+  const rect = lineEl.getBoundingClientRect();
+  const index = Math.max(0, Math.round((clientX - rect.left) / width));
+  let column = 0;
+  for (let i = 2; i < Math.min(index, text.length); i++) {
+    if (text[i] !== "|") column += 1;
+  }
+  return entry.start + column * entry.step;
+}
+
+async function seekPlayer(song, seconds, { autoplay = true } = {}) {
+  const parsed = ensureParsed(song);
+  const target = Math.max(0, Math.min(seconds, parsed.duration - 0.05));
+  tabPlayer.stop();
+  stopTicker();
+  const resume = playerState.status === "playing" || autoplay;
+  if (resume) {
+    await startPlayer(song, { from: target });
+    return;
+  }
+  playerState.status = "paused";
+  tabPlayer.position = target;
+  updatePlayerBar();
+  paintPlayheadAtTime(target);
 }
 
 async function startPlayer(song, { from = 0, fraction = null } = {}) {
@@ -1315,6 +1449,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
     return;
   }
   playerState.parsed = parsed;
+  playerState.blocks = blockOffsets(parsed);
   if (fraction !== null) from = Math.min(parsed.duration * fraction, parsed.duration - 0.05);
 
   if (playerState.countIn && from <= 0.001) {
@@ -1330,6 +1465,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
     from,
     loop: playerState.loop,
     onLine: highlightRange,
+    onEvent: paintEventPlayhead,
     onState: (status) => {
       if (status === "ended" || status === "stopped" || status === "paused") {
         playerState.status = status;
@@ -1344,7 +1480,10 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
   });
 
   playerState.status = started ? "playing" : "stopped";
-  if (started) startTicker();
+  if (started) {
+    startTicker();
+    paintPlayheadAtTime(from);
+  }
   updatePlayerBar();
 }
 
@@ -1400,6 +1539,43 @@ function wirePlayer(song) {
     loopButton.classList.toggle("is-on", playerState.loop);
     loopButton.setAttribute("aria-pressed", String(playerState.loop));
   });
+
+  const progress = document.getElementById("player-progress");
+  progress.addEventListener("click", (event) => {
+    const rect = progress.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const duration = ensureParsed(song).duration;
+    seekPlayer(song, fraction * duration);
+  });
+
+  progress.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const duration = ensureParsed(song).duration;
+    const step = event.key === "ArrowRight" ? 1 : -1;
+    const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+    seekPlayer(song, Math.max(0, Math.min(duration - 0.05, position + step)));
+  });
+
+  const sheet = document.querySelector(".sheet");
+  if (sheet) {
+    sheet.addEventListener("click", (event) => {
+      const block = event.target.closest(".tab-block");
+      const row = event.target.closest(".line.tabline");
+      if (block && row) {
+        const seconds = timeAtPoint(song, block, row, event.clientX);
+        if (seconds !== null) seekPlayer(song, seconds);
+        return;
+      }
+      const line = event.target.closest("[data-line]");
+      if (!line) return;
+      const parsed = ensureParsed(song);
+      const index = Number(line.dataset.line);
+      const next = parsed.events.find((item) => item.lines[0] >= index);
+      const target = next || parsed.events[parsed.events.length - 1];
+      if (target) seekPlayer(song, target.time);
+    });
+  }
 
   updatePlayerBar();
 }

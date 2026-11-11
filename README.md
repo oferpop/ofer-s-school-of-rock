@@ -61,8 +61,10 @@ The app also runs on any static host with **guest mode only**: without
 - **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
-  chord lines one bar each, with synthesized plucks, BPM, count-in and loop,
-  highlighting the line or staff that is sounding
+  chord lines one bar each, with synthesized plucks, BPM, count-in and loop
+- **Playhead** — a vertical marker follows the exact column being played, with a
+  progress bar in the transport; click any point in the tab (or the bar) and
+  playback jumps there and continues
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play

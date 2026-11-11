@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261110h";
+} from "./chords.js?v=20261111a";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -269,6 +269,7 @@ export class TabPlayer {
     this.timeouts = new Set();
     this.visual = null;
     this.onLine = null;
+    this.onEvent = null;
     this.onEnd = null;
     this.onState = null;
     this.wallStart = 0;
@@ -282,7 +283,7 @@ export class TabPlayer {
     this.position = 0;
   }
 
-  async play({ from = this.position, onLine = null, onEnd = null, onState = null, loop = false } = {}) {
+  async play({ from = this.position, onLine = null, onEvent = null, onEnd = null, onState = null, loop = false } = {}) {
     if (!this.parsed || !this.parsed.events.length) return false;
     this.stopTimers();
     const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -298,6 +299,7 @@ export class TabPlayer {
     this.buffers.clear();
 
     this.onLine = onLine;
+    this.onEvent = onEvent;
     this.onEnd = onEnd;
     this.onState = onState;
     this.loop = loop;
@@ -313,7 +315,7 @@ export class TabPlayer {
       if (event.time < offset) continue;
       const when = startAt + (event.time - offset);
       const delay = (when - this.ctx.currentTime) * 1000;
-      this.scheduleVisual(delay, event.lines);
+      this.scheduleVisual(delay, event);
       for (const midi of event.midi) this.scheduleNote(midi, when, event.duration);
     }
 
@@ -341,10 +343,11 @@ export class TabPlayer {
     source.stop(end + 0.02);
   }
 
-  scheduleVisual(delay, lines) {
+  scheduleVisual(delay, event) {
     const timeout = setTimeout(() => {
       this.timeouts.delete(timeout);
-      if (this.onLine) this.onLine(lines);
+      if (this.onLine) this.onLine(event.lines);
+      if (this.onEvent) this.onEvent(event);
     }, Math.max(0, delay));
     this.timeouts.add(timeout);
   }
@@ -357,6 +360,7 @@ export class TabPlayer {
         const restart = () => this.play({
           from: 0,
           onLine: this.onLine,
+          onEvent: this.onEvent,
           onEnd: this.onEnd,
           onState: this.onState,
           loop: true,
@@ -393,6 +397,7 @@ export class TabPlayer {
     return this.play({
       from: this.position,
       onLine: this.onLine,
+      onEvent: this.onEvent,
       onEnd: this.onEnd,
       onState: this.onState,
       loop: options.loop ?? this.loop,
