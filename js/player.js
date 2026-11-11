@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111j";
+} from "./chords.js?v=20261111k";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -162,9 +162,9 @@ function tokenizeTabRow(body) {
           kind: "note",
           fret: Number(note[1]),
           technique,
-          target:
-            rawTarget ??
-            (technique === "/" ? Number(note[1]) + 2 : technique === "\\" ? Math.max(0, Number(note[1]) - 2) : null),
+          target: rawTarget,
+          // 15/ with no landing note is a slide off: a gesture, not a target note.
+          slideOff: rawTarget === null && (technique === "/" || technique === "\\"),
           release: note[4] !== undefined ? Number(note[4]) : null,
           vibrato: vibratoTail || technique === "~",
           length: note[0].length,
@@ -246,6 +246,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         const vibrato = [];
         const dead = [];
         const harmonic = [];
+        const slideOff = [];
         for (const note of notes) {
           const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
@@ -257,6 +258,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             vibrato.push(false);
             dead.push(true);
             harmonic.push(false);
+            slideOff.push(false);
             continue;
           }
           if (note.kind === "harmonic") {
@@ -267,6 +269,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             vibrato.push(false);
             dead.push(false);
             harmonic.push(true);
+            slideOff.push(false);
             continue;
           }
           midi.push(stringMidi + note.fret);
@@ -285,6 +288,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           vibrato.push(Boolean(note.vibrato));
           dead.push(false);
           harmonic.push(false);
+          slideOff.push(Boolean(note.slideOff));
         }
         if (!midi.length) return;
         const next = ordered[index + 1];
@@ -302,6 +306,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           vibrato,
           dead,
           harmonic,
+          slideOff,
           duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
         });
@@ -476,6 +481,7 @@ export class TabPlayer {
           event.release?.[i] ?? null,
           event.vibrato?.[i] ?? false,
           event.dead?.[i] ?? false,
+          event.slideOff?.[i] ?? false,
         );
       });
     }
@@ -486,9 +492,38 @@ export class TabPlayer {
     return true;
   }
 
-  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false) {
+  // 15/ or 9\\: glide away and fade, so no landing note is heard.
+  slideOut(midi, when, duration, technique) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const cached = this.buffers.get(midi);
+    const { buffer } = cached || pluckBuffer(ctx, midi);
+    if (!cached) this.buffers.set(midi, { buffer });
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const length = Math.max(0.28, Math.min(0.55, duration));
+    const end = when + length;
+    const direction = technique === "\\" ? -1 : 1;
+    source.playbackRate.setValueAtTime(1, when);
+    source.playbackRate.linearRampToValueAtTime(2 ** ((direction * 2) / 12), end);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.9, when);
+    gain.gain.setValueAtTime(0.9, when + Math.min(0.1, length * 0.35));
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    source.connect(gain).connect(this.master);
+    source.start(when);
+    source.stop(end + 0.02);
+  }
+
+  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false, slideOff = false) {
     if (dead) {
       this.thump(when, duration);
+      return;
+    }
+    if (slideOff) {
+      this.slideOut(midi, when, duration, technique);
       return;
     }
     if ((technique === "h" || technique === "p") && bendTo !== null) {
