@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111f";
+} from "./chords.js?v=20261111g";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -88,7 +88,9 @@ export function tabBlockEnd(lines, start) {
 }
 
 const TAB_LINE = /^[A-Ga-g]\|/;
-const FRET_TOKEN = /\d+/g;
+// A fret, optionally followed by a technique and its target fret: 7b9, 7b(9),
+// 7/9, 9\7, 7h9, 7p9, 7~.
+const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?/g;
 
 function tabBlockAt(lines, start) {
   const end = tabBlockEnd(lines, start);
@@ -127,15 +129,20 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       }
       const columns = new Map();
       rows.forEach((row, rowIndex) => {
-        FRET_TOKEN.lastIndex = 0;
+        TAB_TOKEN.lastIndex = 0;
         let match;
-        while ((match = FRET_TOKEN.exec(row.body))) {
-          const fret = Number(match[0]);
+        while ((match = TAB_TOKEN.exec(row.body))) {
+          const fret = Number(match[1]);
           if (!Number.isFinite(fret)) continue;
           // Bar lines take a character but no time: count only musical columns.
           const column = row.body.slice(0, match.index).replace(/\|/g, "").length;
           if (!columns.has(column)) columns.set(column, []);
-          columns.get(column).push({ rowIndex, fret });
+          columns.get(column).push({
+            rowIndex,
+            fret,
+            technique: match[2] || null,
+            target: match[3] !== undefined ? Number(match[3]) : null,
+          });
         }
       });
 
@@ -143,10 +150,14 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       const blockColumns = Math.max(1, ...rows.map((row) => row.body.replace(/\|/g, "").length));
       ordered.forEach(([column, notes], index) => {
         const midi = [];
-        for (const { rowIndex, fret } of notes) {
-          const stringMidi = tuning[tuning.length - 1 - rowIndex];
+        const bend = [];
+        const technique = [];
+        for (const note of notes) {
+          const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
-          midi.push(stringMidi + fret);
+          midi.push(stringMidi + note.fret);
+          bend.push(note.target !== null ? stringMidi + note.target : null);
+          technique.push(note.technique);
         }
         if (!midi.length) return;
         const next = ordered[index + 1];
@@ -158,6 +169,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         events.push({
           time: timeOffset + column * step,
           midi,
+          bend,
+          technique,
           duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
         });
@@ -322,7 +335,9 @@ export class TabPlayer {
       const when = startAt + (event.time - offset);
       const delay = (when - this.ctx.currentTime) * 1000;
       this.scheduleVisual(delay, event);
-      for (const midi of event.midi) this.scheduleNote(midi, when, event.duration);
+      event.midi.forEach((midi, i) => {
+        this.scheduleNote(midi, when, event.duration, event.bend?.[i] ?? null, event.technique?.[i] ?? null);
+      });
     }
 
     const remaining = Math.max(0, rangeEnd - offset);
@@ -331,7 +346,17 @@ export class TabPlayer {
     return true;
   }
 
-  scheduleNote(midi, when, duration) {
+  scheduleNote(midi, when, duration, bendTo = null, technique = null) {
+    if ((technique === "h" || technique === "p") && bendTo !== null) {
+      // Hammer-on / pull-off: articulate the start note, then the target.
+      this.pluck(midi, when, Math.min(duration, 0.14));
+      this.pluck(bendTo, when + 0.09, Math.max(0.12, duration - 0.09));
+      return;
+    }
+    this.pluck(midi, when, duration, bendTo, technique);
+  }
+
+  pluck(midi, when, duration, bendTo = null, technique = null) {
     const ctx = this.ctx;
     if (!ctx) return;
     const cached = this.buffers.get(midi);
@@ -339,6 +364,15 @@ export class TabPlayer {
     if (!cached) this.buffers.set(midi, { buffer });
     const source = ctx.createBufferSource();
     source.buffer = buffer;
+
+    // Bend or slide: glide the playback rate from the written note to the
+    // target fret, so the pitch rises to the note the tab names.
+    if (bendTo !== null && midi !== bendTo && technique !== "h" && technique !== "p") {
+      const semitones = bendTo - midi;
+      const glide = Math.min(0.2, Math.max(0.07, duration * 0.55));
+      source.playbackRate.setValueAtTime(1, when);
+      source.playbackRate.linearRampToValueAtTime(2 ** (semitones / 12), when + glide);
+    }
     const gain = ctx.createGain();
     const end = when + Math.max(0.15, Math.min(2.7, duration));
     gain.gain.setValueAtTime(0.9, when);
