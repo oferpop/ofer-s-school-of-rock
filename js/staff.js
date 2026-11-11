@@ -56,10 +56,15 @@ export function renderStaff(events, { columnsPerBar = 16, barsPerRow = 4, width 
       const notes = [...new Set(event.midi)].sort((a, b) => a - b);
       let topY = Infinity;
 
-      for (const midi of notes) {
+      event.midi.forEach((midi, noteIndex) => {
+        if (notes.indexOf(midi) === -1) return;
+        notes.splice(notes.indexOf(midi), 1);
+        const dead = event.dead?.[noteIndex] === true;
+        const harmonic = event.harmonic?.[noteIndex] === true;
+        const tapped = event.technique?.[noteIndex] === "t";
         const { position, accidental } = diatonic(midi);
         const y = bottom - (position - 30) * 5;
-        if (y < top - 20 || y > bottom + 30) continue;
+        if (y < top - 20 || y > bottom + 30) return;
 
         // Ledger lines outside the five staff lines.
         if (position <= 28 && position % 2 === 0) {
@@ -75,13 +80,20 @@ export function renderStaff(events, { columnsPerBar = 16, barsPerRow = 4, width 
           }
         }
 
-        if (accidental) svg += `<text class="staff-accidental" x="${x - 14}" y="${y + 4}">♯</text>`;
+        if (!dead && accidental) svg += `<text class="staff-accidental" x="${x - 14}" y="${y + 4}">♯</text>`;
 
-        svg += `<ellipse class="staff-head" cx="${x}" cy="${y}" rx="4.8" ry="3.4" transform="rotate(-18 ${x} ${y})" />`;
+        if (dead) {
+          svg += `<path class="staff-dead" d="M${x - 4},${y - 4} l 8,8 M${x + 4},${y - 4} l -8,8" />`;
+        } else if (harmonic) {
+          svg += `<path class="staff-harmonic" d="M${x},${y - 4.6} L${x + 5},${y} L${x},${y + 4.6} L${x - 5},${y} Z" />`;
+        } else {
+          svg += `<ellipse class="staff-head" cx="${x}" cy="${y}" rx="4.8" ry="3.4" transform="rotate(-18 ${x} ${y})" />`;
+        }
+        if (tapped) svg += `<text class="staff-tap" x="${x - 4}" y="${y - 8}">T</text>`;
         topY = Math.min(topY, y);
-      }
+      });
 
-      const firstY = bottom - (diatonic(notes[0]).position - 30) * 5;
+      const firstY = bottom - (diatonic(notes[0] ?? event.midi[0]).position - 30) * 5;
       const stemUp = firstY > top + 20;
       const stemX = stemUp ? x + 4.2 : x - 4.2;
       const stemY2 = stemUp ? firstY - 26 : firstY + 26;

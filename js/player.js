@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111h";
+} from "./chords.js?v=20261111i";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -54,7 +54,7 @@ function chordNotes(token) {
 }
 
 const LABELED_TAB = /^[A-Ga-g]\|/;
-const UG_ROW = /^[0-9|\-/\\~hpbxX()\s]+$/i;
+const UG_ROW = /^[0-9|\-/\\~hpbxr t<>()\s]+$/i;
 
 function isUgRow(line) {
   const text = line.trim();
@@ -90,7 +90,65 @@ export function tabBlockEnd(lines, start) {
 const TAB_LINE = /^[A-Ga-g]\|/;
 // A fret, optionally followed by a technique and its target fret: 7b9, 7b(9),
 // 7/9, 9\7, 7h9, 7p9, 7~.
-const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*)/g;
+const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*)/;
+const TAB_TAP = /^[tT](\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?/;
+const TAB_HARMONIC = /^<(\d+)>/;
+const HARMONIC_OFFSET = { 12: 12, 7: 19, 5: 24, 4: 28, 3: 31, 2: 34, 9: 16 };
+
+// Split one tablature row into notes: frets, taps (t12), harmonics (<7>) and
+// dead notes (x).
+function tokenizeTabRow(body) {
+  const tokens = [];
+  let index = 0;
+  while (index < body.length) {
+    const rest = body.slice(index);
+    const harmonic = TAB_HARMONIC.exec(rest);
+    if (harmonic) {
+      tokens.push({ index, kind: "harmonic", fret: Number(harmonic[1]), length: harmonic[0].length });
+      index += harmonic[0].length;
+      continue;
+    }
+    if (body[index] === "x" || body[index] === "X") {
+      tokens.push({ index, kind: "dead", length: 1 });
+      index += 1;
+      continue;
+    }
+    if (body[index] === "t" || body[index] === "T") {
+      const tap = TAB_TAP.exec(rest);
+      if (tap) {
+        tokens.push({
+          index,
+          kind: "tap",
+          fret: Number(tap[1]),
+          technique: tap[2] || null,
+          target: tap[3] !== undefined ? Number(tap[3]) : null,
+          length: tap[0].length,
+        });
+        index += tap[0].length;
+        continue;
+      }
+    }
+    if (/\d/.test(body[index])) {
+      const note = TAB_TOKEN.exec(rest);
+      if (note && note.index === 0) {
+        tokens.push({
+          index,
+          kind: "note",
+          fret: Number(note[1]),
+          technique: note[2] || null,
+          target: note[3] !== undefined ? Number(note[3]) : null,
+          release: note[4] !== undefined ? Number(note[4]) : null,
+          vibrato: Boolean(note[5]) || note[2] === "~",
+          length: note[0].length,
+        });
+        index += note[0].length;
+        continue;
+      }
+    }
+    index += 1;
+  }
+  return tokens;
+}
 
 function tabBlockAt(lines, start) {
   const end = tabBlockEnd(lines, start);
@@ -129,22 +187,11 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       }
       const columns = new Map();
       rows.forEach((row, rowIndex) => {
-        TAB_TOKEN.lastIndex = 0;
-        let match;
-        while ((match = TAB_TOKEN.exec(row.body))) {
-          const fret = Number(match[1]);
-          if (!Number.isFinite(fret)) continue;
+        for (const token of tokenizeTabRow(row.body)) {
           // Bar lines take a character but no time: count only musical columns.
-          const column = row.body.slice(0, match.index).replace(/\|/g, "").length;
+          const column = row.body.slice(0, token.index).replace(/\|/g, "").length;
           if (!columns.has(column)) columns.set(column, []);
-          columns.get(column).push({
-            rowIndex,
-            fret,
-            technique: match[2] || null,
-            target: match[3] !== undefined ? Number(match[3]) : null,
-            release: match[4] !== undefined ? Number(match[4]) : null,
-            vibrato: Boolean(match[5]) || match[2] === "~",
-          });
+          columns.get(column).push({ ...token, rowIndex });
         }
       });
 
@@ -156,9 +203,31 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         const release = [];
         const technique = [];
         const vibrato = [];
+        const dead = [];
+        const harmonic = [];
         for (const note of notes) {
           const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
+          if (note.kind === "dead") {
+            midi.push(stringMidi);
+            bend.push(null);
+            release.push(null);
+            technique.push("x");
+            vibrato.push(false);
+            dead.push(true);
+            harmonic.push(false);
+            continue;
+          }
+          if (note.kind === "harmonic") {
+            midi.push(stringMidi + (HARMONIC_OFFSET[note.fret] ?? 12));
+            bend.push(null);
+            release.push(null);
+            technique.push("<");
+            vibrato.push(false);
+            dead.push(false);
+            harmonic.push(true);
+            continue;
+          }
           midi.push(stringMidi + note.fret);
           bend.push(note.target !== null ? stringMidi + note.target : null);
           release.push(
@@ -168,8 +237,10 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
                 ? stringMidi + note.fret
                 : null,
           );
-          technique.push(note.technique);
-          vibrato.push(note.vibrato);
+          technique.push(note.kind === "tap" ? "t" : note.technique);
+          vibrato.push(Boolean(note.vibrato));
+          dead.push(false);
+          harmonic.push(false);
         }
         if (!midi.length) return;
         const next = ordered[index + 1];
@@ -185,6 +256,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           release,
           technique,
           vibrato,
+          dead,
+          harmonic,
           duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
         });
@@ -358,6 +431,7 @@ export class TabPlayer {
           event.technique?.[i] ?? null,
           event.release?.[i] ?? null,
           event.vibrato?.[i] ?? false,
+          event.dead?.[i] ?? false,
         );
       });
     }
@@ -368,7 +442,11 @@ export class TabPlayer {
     return true;
   }
 
-  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false) {
+  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false) {
+    if (dead) {
+      this.thump(when, duration);
+      return;
+    }
     if ((technique === "h" || technique === "p") && bendTo !== null) {
       // Hammer-on / pull-off: articulate the start note, then the target.
       this.pluck(midi, when, Math.min(duration, 0.14));
@@ -376,6 +454,31 @@ export class TabPlayer {
       return;
     }
     this.pluck(midi, when, duration, bendTo, technique, releaseTo, vibrato);
+  }
+
+  // Dead note: a short muted thump with no pitch.
+  thump(when, duration) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (!this.thumpBuffer) {
+      const seconds = 0.12;
+      const size = Math.ceil(ctx.sampleRate * seconds);
+      const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < size; i++) {
+        data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.025));
+      }
+      this.thumpBuffer = buffer;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = this.thumpBuffer;
+    const gain = ctx.createGain();
+    const end = when + Math.max(0.05, Math.min(0.14, duration));
+    gain.gain.setValueAtTime(0.35, when);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    source.connect(gain).connect(this.master);
+    source.start(when);
+    source.stop(end + 0.01);
   }
 
   pluck(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false) {
@@ -503,6 +606,7 @@ export class TabPlayer {
     this.ctx = null;
     this.master = null;
     this.buffers.clear();
+    this.thumpBuffer = null;
   }
 
   stopTimers() {
