@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261111k";
+import { songs, byId, versionsOf } from "./data.js?v=20261111L";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261111k";
+} from "./chords.js?v=20261111L";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261111k";
+} from "./pro.js?v=20261111L";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261111k";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261111k";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261111k";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111k";
-import { renderStaff } from "./staff.js?v=20261111k";
+} from "./auth.js?v=20261111L";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261111L";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261111L";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111L";
+import { renderStaff } from "./staff.js?v=20261111L";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1361,13 +1361,15 @@ function blockOffsets(parsed) {
   const map = new Map();
   for (const event of parsed.events) {
     const key = event.lines[0];
-    const finish = event.time + Math.max(parsed.step, event.duration);
+    const start = event.blockStart ?? event.time;
+    const finish = event.blockEnd ?? event.time + Math.max(parsed.step, event.duration);
     const current = map.get(key);
     if (!current) {
-      map.set(key, { start: event.time, end: finish, step: parsed.step });
+      map.set(key, { start, end: finish, endLine: event.lines[1], step: parsed.step });
     } else {
-      current.start = Math.min(current.start, event.time);
+      current.start = Math.min(current.start, start);
       current.end = Math.max(current.end, finish);
+      current.endLine = event.lines[1];
     }
   }
   return map;
@@ -1392,34 +1394,36 @@ function visualIndex(text, column) {
   return text.length;
 }
 
-function paintEventPlayhead(event) {
-  const entry = playerState.blocks?.get(event.lines[0]);
+// Place the playhead from a time, not from the last event, so it keeps moving
+// through rests and long notes and always agrees with the progress bar.
+function paintPlayheadAtTime(seconds) {
+  const blocks = playerState.blocks;
+  if (!blocks) return;
+  let key = null;
+  let entry = null;
+  for (const [lineStart, value] of blocks) {
+    if (value.start <= seconds + 0.001) {
+      key = lineStart;
+      entry = value;
+    }
+  }
   if (!entry) return;
+
   const block = document.querySelector(
-    `.tab-block[data-line-start="${event.lines[0]}"][data-line-end="${event.lines[1]}"]`,
+    `.tab-block[data-line-start="${key}"][data-line-end="${entry.endLine}"]`,
   );
   if (!block) return;
   const marker = block.querySelector(".tab-playhead");
   const row = block.querySelector(".line.tabline");
   if (!marker || !row) return;
 
-  const column = Math.max(0, Math.round((event.time - entry.start) / entry.step));
+  const column = Math.max(0, Math.round((seconds - entry.start) / entry.step));
   const left = tabCharWidth(row) * visualIndex(row.textContent, column);
   document.querySelectorAll(".tab-playhead").forEach((other) => {
     if (other !== marker) other.hidden = true;
   });
   marker.hidden = false;
   marker.style.left = `${left}px`;
-}
-
-function paintPlayheadAtTime(seconds) {
-  const events = playerState.parsed?.events || [];
-  let best = null;
-  for (const event of events) {
-    if (event.time <= seconds + 0.001) best = event;
-    else break;
-  }
-  if (best) paintEventPlayhead(best);
 }
 
 function clearPlayhead() {

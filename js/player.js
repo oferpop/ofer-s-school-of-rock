@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111k";
+} from "./chords.js?v=20261111L";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -238,6 +238,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
 
       const ordered = [...columns.entries()].sort((a, b) => a[0] - b[0]);
       const blockColumns = Math.max(1, ...rows.map((row) => row.body.replace(/\|/g, "").length));
+      const blockStart = timeOffset;
+      const blockEnd = timeOffset + blockColumns * step;
       ordered.forEach(([column, notes], index) => {
         const midi = [];
         const bend = [];
@@ -299,6 +301,9 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         const maxDuration = next ? beat * 4 : beat * 2;
         events.push({
           time: timeOffset + column * step,
+          blockStart,
+          blockEnd,
+          blockColumns,
           midi,
           bend,
           release,
