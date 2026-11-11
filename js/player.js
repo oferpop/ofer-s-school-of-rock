@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111i";
+} from "./chords.js?v=20261111j";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -54,7 +54,7 @@ function chordNotes(token) {
 }
 
 const LABELED_TAB = /^[A-Ga-g]\|/;
-const UG_ROW = /^[0-9|\-/\\~hpbxr t<>()\s]+$/i;
+const UG_ROW = /^[0-9|\-/\\~hpbxrvt<>()\s]+$/i;
 
 function isUgRow(line) {
   const text = line.trim();
@@ -90,10 +90,33 @@ export function tabBlockEnd(lines, start) {
 const TAB_LINE = /^[A-Ga-g]\|/;
 // A fret, optionally followed by a technique and its target fret: 7b9, 7b(9),
 // 7/9, 9\7, 7h9, 7p9, 7~.
-const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*)/;
+const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^vV])[ ]*\(?(\d+)?\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*[vV]*)/;
 const TAB_TAP = /^[tT](\d+)(?:[ ]*([bhp/\\~^])[ ]*\(?(\d+)\)?)?/;
 const TAB_HARMONIC = /^<(\d+)>/;
 const HARMONIC_OFFSET = { 12: 12, 7: 19, 5: 24, 4: 28, 3: 31, 2: 34, 9: 16 };
+
+// Bend arrows written above a tab block: )1/2, )f, )1/2_, )full.
+function bendSemitones(text) {
+  const value = text.toLowerCase().replace(/\s+/g, "");
+  if (value === "1/2") return 1;
+  if (value === "11/2") return 3;
+  if (value === "1/4") return 1;
+  if (value === "1") return 2;
+  return 2; // f / full
+}
+
+function parseBendAnnotations(lines) {
+  const found = [];
+  const pattern = /\)\s*(1\s*1\/2|1\/2|1\/4|full|f|1)\s*(_?)/gi;
+  lines.forEach((line) => {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(line))) {
+      found.push({ index: match.index, semis: bendSemitones(match[1]), release: match[2] === "_" });
+    }
+  });
+  return found;
+}
 
 // Split one tablature row into notes: frets, taps (t12), harmonics (<7>) and
 // dead notes (x).
@@ -131,14 +154,19 @@ function tokenizeTabRow(body) {
     if (/\d/.test(body[index])) {
       const note = TAB_TOKEN.exec(rest);
       if (note && note.index === 0) {
+        const technique = note[2] || null;
+        const rawTarget = note[3] !== undefined ? Number(note[3]) : null;
+        const vibratoTail = Boolean(note[5]) || technique === "v" || technique === "V";
         tokens.push({
           index,
           kind: "note",
           fret: Number(note[1]),
-          technique: note[2] || null,
-          target: note[3] !== undefined ? Number(note[3]) : null,
+          technique,
+          target:
+            rawTarget ??
+            (technique === "/" ? Number(note[1]) + 2 : technique === "\\" ? Math.max(0, Number(note[1]) - 2) : null),
           release: note[4] !== undefined ? Number(note[4]) : null,
-          vibrato: Boolean(note[5]) || note[2] === "~",
+          vibrato: vibratoTail || technique === "~",
           length: note[0].length,
         });
         index += note[0].length;
@@ -162,7 +190,8 @@ function tabBlockAt(lines, start) {
  * note). Otherwise the chord lines are played, one bar per chord.
  */
 export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simplify = false } = {}) {
-  const lines = song.body.split("\n");
+  // Some publishers use en/em dashes inside tab rows.
+  const lines = song.body.replace(/[\u2013\u2014]/g, "-").split("\n");
   const beat = 60 / bpm;
   const step = beat / 4;
   const tuning = tuningMidi(song.tuning);
@@ -178,7 +207,10 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
 
   if (tabBlocks.length) {
     let timeOffset = 0;
-    for (const block of tabBlocks) {
+    for (const [blockIndex, block] of tabBlocks.entries()) {
+      const previousEnd = blockIndex > 0 ? tabBlocks[blockIndex - 1].end + 1 : 0;
+      const annotations = parseBendAnnotations(lines.slice(previousEnd, block.start));
+
       const rows = [];
       for (let i = block.start; i <= block.end; i++) {
         const raw = lines[i].trim();
@@ -191,7 +223,16 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           // Bar lines take a character but no time: count only musical columns.
           const column = row.body.slice(0, token.index).replace(/\|/g, "").length;
           if (!columns.has(column)) columns.set(column, []);
-          columns.get(column).push({ ...token, rowIndex });
+          const marker =
+            token.kind === "note"
+              ? annotations.find((entry) => Math.abs(entry.index - (token.index + 2)) <= 3)
+              : null;
+          columns.get(column).push({
+            ...token,
+            rowIndex,
+            bendSemis: marker?.semis ?? 0,
+            bendRelease: marker?.release ?? false,
+          });
         }
       });
 
@@ -229,11 +270,14 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             continue;
           }
           midi.push(stringMidi + note.fret);
-          bend.push(note.target !== null ? stringMidi + note.target : null);
+          const bendFret = note.target !== null ? note.target : note.bendSemis ? note.fret + note.bendSemis : null;
+          bend.push(bendFret !== null ? stringMidi + bendFret : null);
+          // A release only happens when the tab says so (r7 or the _ arrow);
+          // bends and slides otherwise hold their new pitch.
           release.push(
             note.release !== null
               ? stringMidi + note.release
-              : note.target !== null
+              : note.bendRelease
                 ? stringMidi + note.fret
                 : null,
           );
