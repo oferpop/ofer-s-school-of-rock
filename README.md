@@ -65,6 +65,10 @@ The app also runs on any static host with **guest mode only**: without
 - **Playhead** — a vertical marker follows the exact column being played, with a
   progress bar in the transport; click any point in the tab (or the bar) and
   playback jumps there and continues
+- **A–B loop** — with Loop on, drag across the tablature to select the phrase:
+  the range is drawn on the rows and on the progress bar and repeats until you
+  clear it; the A and B buttons drop boundaries at the playhead
+- **Space** toggles play/pause anywhere on a song page (except while typing)
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play

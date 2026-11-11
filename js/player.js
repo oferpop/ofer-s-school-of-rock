@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111a";
+} from "./chords.js?v=20261111f";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -274,6 +274,8 @@ export class TabPlayer {
     this.onState = null;
     this.wallStart = 0;
     this.startPosition = 0;
+    this.loopStart = 0;
+    this.loopEnd = 0;
   }
 
   load(parsed, { bpm = 100 } = {}) {
@@ -305,7 +307,10 @@ export class TabPlayer {
     this.loop = loop;
     this.playing = true;
     this.paused = false;
-    this.startPosition = Math.max(0, Math.min(from, this.parsed.duration - 0.05));
+    const rangeEnd = this.loop && this.loopEnd > this.loopStart ? Math.min(this.loopEnd, this.parsed.duration) : this.parsed.duration;
+    this.rangeEnd = rangeEnd;
+    const start = this.loop && this.loopEnd > this.loopStart ? Math.max(this.loopStart, Math.min(from, rangeEnd)) : from;
+    this.startPosition = Math.max(0, Math.min(start, rangeEnd - 0.05));
     this.wallStart = performance.now();
 
     const startAt = this.ctx.currentTime + 0.06;
@@ -313,13 +318,14 @@ export class TabPlayer {
 
     for (const event of this.parsed.events) {
       if (event.time < offset) continue;
+      if (event.time >= rangeEnd) break;
       const when = startAt + (event.time - offset);
       const delay = (when - this.ctx.currentTime) * 1000;
       this.scheduleVisual(delay, event);
       for (const midi of event.midi) this.scheduleNote(midi, when, event.duration);
     }
 
-    const remaining = Math.max(0, this.parsed.duration - offset);
+    const remaining = Math.max(0, rangeEnd - offset);
     this.scheduleEnd(remaining);
     this.onState?.("playing");
     return true;
@@ -358,7 +364,7 @@ export class TabPlayer {
       if (!this.playing) return;
       if (this.loop) {
         const restart = () => this.play({
-          from: 0,
+          from: this.loopEnd > this.loopStart ? this.loopStart : 0,
           onLine: this.onLine,
           onEvent: this.onEvent,
           onEnd: this.onEnd,
@@ -368,7 +374,7 @@ export class TabPlayer {
         restart();
         return;
       }
-      this.position = this.parsed.duration;
+      this.position = this.rangeEnd ?? this.parsed.duration;
       this.playing = false;
       this.paused = false;
       this.onState?.("ended");
@@ -384,7 +390,7 @@ export class TabPlayer {
 
   pause() {
     if (!this.playing) return false;
-    this.position = Math.min(this.elapsed(), this.parsed.duration);
+    this.position = Math.min(this.elapsed(), this.rangeEnd ?? this.parsed.duration);
     this.playing = false;
     this.paused = true;
     this.closeAudio();

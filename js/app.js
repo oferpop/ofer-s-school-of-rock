@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261111a";
+import { songs, byId, versionsOf } from "./data.js?v=20261111f";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261111a";
+} from "./chords.js?v=20261111f";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261111a";
+} from "./pro.js?v=20261111f";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261111a";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261111a";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261111a";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111a";
-import { renderStaff } from "./staff.js?v=20261111a";
+} from "./auth.js?v=20261111f";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261111f";
+import { Tuner, TUNINGS } from "./tuner.js?v=20261111f";
+import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111f";
+import { renderStaff } from "./staff.js?v=20261111f";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -93,6 +93,8 @@ const playerState = {
   status: "stopped",
   parsed: null,
   songId: null,
+  loopStart: 0,
+  loopEnd: 0,
 };
 
 let playerTicker = null;
@@ -152,6 +154,18 @@ async function flushSync(keepalive = false) {
   const result = await pushState(snapshotState(), { keepalive });
   if (!result.ok) syncPending = true;
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || event.metaKey || event.ctrlKey || event.altKey) return;
+  const target = event.target;
+  if (target && target.closest && target.closest("input, textarea, select, button, [contenteditable]")) return;
+  const current = route();
+  if (current.view !== "song") return;
+  const song = findSong(current.id);
+  if (!song) return;
+  event.preventDefault();
+  togglePlayer(song);
+});
 
 window.addEventListener("pagehide", () => {
   if (state.user && syncPending) {
@@ -218,6 +232,10 @@ window.addEventListener("hashchange", () => {
   stopPractice();
   stopTuner();
   stopPlayer();
+  playerState.loopStart = 0;
+  playerState.loopEnd = 0;
+  tabPlayer.loopStart = 0;
+  tabPlayer.loopEnd = 0;
   state.picker = "";
   state.backupNote = "";
   state.showVideo = false;
@@ -562,6 +580,7 @@ function renderSheet(song, maxLines = 0) {
         for (let i = index; i <= end; i++) rowsOut.push(renderLine(lines[i], i, true));
         out.push(
           `<div class="tab-block" data-line-start="${index}" data-line-end="${end}">` +
+            `<span class="tab-loop-band" aria-hidden="true" hidden></span>` +
             `<span class="tab-playhead" aria-hidden="true" hidden></span>${rowsOut.join("")}</div>`,
         );
       }
@@ -1231,12 +1250,15 @@ function playerBar() {
       </div>
       <button class="pill ${playerState.countIn ? "is-on" : ""}" id="player-countin" aria-pressed="${playerState.countIn}">Count-in</button>
       <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
+      <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
+      <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
       <span class="player-time dim" id="player-time">${time} / ${total}</span>
       <span class="player-kind dim" id="player-kind">${
         playerState.parsed ? (playerState.parsed.kind === "tab" ? "Tablature" : "Chords") : ""
       }</span>
       <div class="player-progress" id="player-progress" role="slider" aria-label="Playback position"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+        <span class="player-loop-range" id="player-loop-range" hidden></span>
         <span class="player-progress-fill" id="player-progress-fill"></span>
       </div>
     </div>`;
@@ -1266,6 +1288,7 @@ function updatePlayerBar() {
 
   if (playerState.parsed && playerState.parsed.duration) {
     const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+    if (playerState.status === "playing") paintPlayheadAtTime(position);
     const pct = Math.max(0, Math.min(100, (position / playerState.parsed.duration) * 100));
     const fill = document.getElementById("player-progress-fill");
     const bar = document.getElementById("player-progress");
@@ -1281,7 +1304,7 @@ function updatePlayerBar() {
 
 function startTicker() {
   stopTicker();
-  playerTicker = setInterval(updatePlayerBar, 250);
+  playerTicker = setInterval(updatePlayerBar, 120);
 }
 
 function stopTicker() {
@@ -1338,9 +1361,13 @@ function blockOffsets(parsed) {
   const map = new Map();
   for (const event of parsed.events) {
     const key = event.lines[0];
+    const finish = event.time + Math.max(parsed.step, event.duration);
     const current = map.get(key);
-    if (!current || event.time < current.start) {
-      map.set(key, { start: event.time, step: parsed.step, end: event.lines[1] });
+    if (!current) {
+      map.set(key, { start: event.time, end: finish, step: parsed.step });
+    } else {
+      current.start = Math.min(current.start, event.time);
+      current.end = Math.max(current.end, finish);
     }
   }
   return map;
@@ -1420,7 +1447,10 @@ function timeAtPoint(song, block, lineEl, clientX) {
 
 async function seekPlayer(song, seconds, { autoplay = true } = {}) {
   const parsed = ensureParsed(song);
-  const target = Math.max(0, Math.min(seconds, parsed.duration - 0.05));
+  let target = Math.max(0, Math.min(seconds, parsed.duration - 0.05));
+  if (playerState.loop && playerState.loopEnd > playerState.loopStart) {
+    target = Math.max(playerState.loopStart, Math.min(target, playerState.loopEnd - 0.05));
+  }
   tabPlayer.stop();
   stopTicker();
   const resume = playerState.status === "playing" || autoplay;
@@ -1432,6 +1462,74 @@ async function seekPlayer(song, seconds, { autoplay = true } = {}) {
   tabPlayer.position = target;
   updatePlayerBar();
   paintPlayheadAtTime(target);
+}
+
+function applyLoop(song) {
+  tabPlayer.loop = playerState.loop;
+  tabPlayer.loopStart = playerState.loop ? playerState.loopStart : 0;
+  tabPlayer.loopEnd = playerState.loop ? playerState.loopEnd : 0;
+  const button = document.getElementById("player-loop");
+  if (button) {
+    button.classList.toggle("is-on", playerState.loop);
+    button.setAttribute("aria-pressed", String(playerState.loop));
+  }
+  drawLoopRange();
+}
+
+function markLoopPoint(song, which) {
+  const parsed = ensureParsed(song);
+  const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+  if (which === "a") {
+    playerState.loopStart = position;
+    if (playerState.loopEnd <= position + 0.1) {
+      playerState.loopEnd = Math.min(parsed.duration, position + 4);
+    }
+  } else {
+    playerState.loopEnd = position;
+    if (playerState.loopStart >= position - 0.1) {
+      playerState.loopStart = Math.max(0, position - 4);
+    }
+  }
+  playerState.loop = true;
+  applyLoop(song);
+}
+
+// Highlight the selected loop on the progress bar and across the tab rows.
+function drawLoopRange() {
+  const parsed = playerState.parsed;
+  const active = parsed && playerState.loopEnd > playerState.loopStart + 0.05;
+  const range = document.getElementById("player-loop-range");
+  if (range) {
+    range.hidden = !active;
+    if (active) {
+      range.style.left = `${(playerState.loopStart / parsed.duration) * 100}%`;
+      range.style.width = `${((playerState.loopEnd - playerState.loopStart) / parsed.duration) * 100}%`;
+    }
+  }
+
+  document.querySelectorAll(".tab-block").forEach((block) => {
+    const band = block.querySelector(".tab-loop-band");
+    const row = block.querySelector(".line.tabline");
+    const entry = playerState.blocks?.get(Number(block.dataset.lineStart));
+    if (!band || !row || !entry || !active) {
+      if (band) band.hidden = true;
+      return;
+    }
+    const a = Math.max(playerState.loopStart, entry.start);
+    const b = Math.min(playerState.loopEnd, entry.end);
+    if (b <= a) {
+      band.hidden = true;
+      return;
+    }
+    const width = tabCharWidth(row);
+    const colA = Math.max(0, Math.round((a - entry.start) / entry.step));
+    const colB = Math.max(colA, Math.round((b - entry.start) / entry.step));
+    const left = width * visualIndex(row.textContent, colA);
+    const right = width * visualIndex(row.textContent, colB);
+    band.hidden = false;
+    band.style.left = `${left}px`;
+    band.style.width = `${Math.max(2, right - left)}px`;
+  });
 }
 
 async function startPlayer(song, { from = 0, fraction = null } = {}) {
@@ -1461,11 +1559,12 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
 
   tabPlayer.load(parsed, { bpm: playerState.bpm });
   tabPlayer.position = from;
+  tabPlayer.loopStart = playerState.loop ? playerState.loopStart : 0;
+  tabPlayer.loopEnd = playerState.loop ? playerState.loopEnd : 0;
   const started = await tabPlayer.play({
     from,
     loop: playerState.loop,
     onLine: highlightRange,
-    onEvent: paintEventPlayhead,
     onState: (status) => {
       if (status === "ended" || status === "stopped" || status === "paused") {
         playerState.status = status;
@@ -1534,11 +1633,18 @@ function wirePlayer(song) {
   const loopButton = document.getElementById("player-loop");
   loopButton.addEventListener("click", () => {
     playerState.loop = !playerState.loop;
-    tabPlayer.loop = playerState.loop;
     localStorage.setItem("osr.player.loop", playerState.loop ? "on" : "off");
-    loopButton.classList.toggle("is-on", playerState.loop);
-    loopButton.setAttribute("aria-pressed", String(playerState.loop));
+    applyLoop(song);
+    const wasPlaying = playerState.status === "playing";
+    const position = wasPlaying ? tabPlayer.elapsed() : tabPlayer.position;
+    seekPlayer(song, position, { autoplay: wasPlaying });
+    drawLoopRange();
   });
+
+  const markA = document.getElementById("loop-a");
+  if (markA) markA.addEventListener("click", () => markLoopPoint(song, "a"));
+  const markB = document.getElementById("loop-b");
+  if (markB) markB.addEventListener("click", () => markLoopPoint(song, "b"));
 
   const progress = document.getElementById("player-progress");
   progress.addEventListener("click", (event) => {
@@ -1559,7 +1665,45 @@ function wirePlayer(song) {
 
   const sheet = document.querySelector(".sheet");
   if (sheet) {
+    let drag = null;
+    let suppressClick = false;
+
+    sheet.addEventListener("pointerdown", (event) => {
+      if (!playerState.loop) return;
+      const block = event.target.closest(".tab-block");
+      const row = event.target.closest(".line.tabline");
+      if (!block || !row) return;
+      const time = timeAtPoint(song, block, row, event.clientX);
+      if (time === null) return;
+      drag = { block, row, start: time, x: event.clientX, moved: false };
+    });
+
+    sheet.addEventListener("pointermove", (event) => {
+      if (!drag) return;
+      if (Math.abs(event.clientX - drag.x) > 4) drag.moved = true;
+      if (!drag.moved) return;
+      const time = timeAtPoint(song, drag.block, drag.row, event.clientX);
+      if (time === null) return;
+      playerState.loopStart = Math.min(drag.start, time);
+      playerState.loopEnd = Math.max(drag.start, time);
+      playerState.loop = true;
+      applyLoop(song);
+    });
+
+    sheet.addEventListener("pointerup", () => {
+      if (!drag) return;
+      const moved = drag.moved;
+      drag = null;
+      if (!moved) return;
+      suppressClick = true;
+      seekPlayer(song, playerState.loopStart);
+    });
+
     sheet.addEventListener("click", (event) => {
+      if (suppressClick) {
+        suppressClick = false;
+        return;
+      }
       const block = event.target.closest(".tab-block");
       const row = event.target.closest(".line.tabline");
       if (block && row) {
@@ -1578,6 +1722,8 @@ function wirePlayer(song) {
   }
 
   updatePlayerBar();
+  drawLoopRange();
+
 }
 
 // --- accounts -----------------------------------------------------------
