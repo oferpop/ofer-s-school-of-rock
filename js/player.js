@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112n";
+} from "./chords.js?v=20261112p";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -363,28 +363,45 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
   } else {
     const tokensByLine = chordTokensByLine(song.body);
     let time = 0;
+    const emitChord = (token, index, length) => {
+      let chord = token;
+      if (transpose) chord = transposeChord(chord, transpose, flats);
+      else if (flats) chord = transposeChord(chord, 0, true);
+      if (simplify) chord = simplifyChord(chord);
+      const midi = chordNotes(chord);
+      if (midi.length) {
+        events.push({
+          time,
+          midi,
+          duration: Math.max(0.15, length * 0.9),
+          lines: [index, index],
+          chord,
+        });
+      }
+      time += length;
+    };
+
     lines.forEach((line, index) => {
       const trimmed = line.trim();
       if (!trimmed || TAB_LINE.test(trimmed) || /^\[.*\]$/.test(trimmed)) return;
       const chords = (tokensByLine[index] || []).filter((token) => parseChord(token));
       if (!chords.length) return;
-      for (const token of chords) {
-        let chord = token;
-        if (transpose) chord = transposeChord(chord, transpose, flats);
-        else if (flats) chord = transposeChord(chord, 0, true);
-        if (simplify) chord = simplifyChord(chord);
-        const midi = chordNotes(chord);
-        if (midi.length) {
-          events.push({
-            time,
-            midi,
-            duration: beat * 3.6,
-            lines: [index, index],
-            chord,
-          });
+
+      // A bar-delimited line (generated chord charts) splits the bar between
+      // its chords; a plain chord line keeps one chord per bar.
+      if (line.includes("|")) {
+        const bars = line
+          .split("|")
+          .map((part) => part.trim().split(/\s+/).filter((word) => word && parseChord(word)));
+        for (const bar of bars) {
+          if (!bar.length) continue;
+          const length = (beat * 4) / bar.length;
+          for (const token of bar) emitChord(token, index, length);
         }
-        time += beat * 4;
+        return;
       }
+
+      for (const token of chords) emitChord(token, index, beat * 4);
     });
   }
 

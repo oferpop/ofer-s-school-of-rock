@@ -109,16 +109,20 @@ The app also runs on any static host with **guest mode only**: without
   with the metronome, building a set list
 
 **Transcribe (`#/transcribe`)**
-- Record from the microphone or load an audio file you own. Attacks (energy
-  onsets) split the take into events, and each event is read from an FFT with a
-  harmonic template, so chords up to four notes and repeated notes are kept
-  apart. Events are quantised to a 16th grid, placed on distinct strings and
-  written as ASCII tab that opens in the reader
-- The tempo is estimated from the recording (onset-flux autocorrelation, 70–180
-  BPM) and written into the Tempo field; analysis shows a spinner, percentage
-  and elapsed time, and recording shows a running clock
-- Monophonic material (melodies, riffs, solos) works; full mixes and chords do
-  not. Nothing is uploaded, and the app never downloads YouTube or Spotify audio
+- Load an audio file you own; the analyser folds each frame into 12 pitch
+  classes (bass-weighted), scores them against major, minor, 7th, m7, sus4 and
+  dim shapes, smooths the result and writes a chord chart. Dividing each
+  template score by its number of chord tones keeps plain triads from losing to
+  their own seventh
+- The tempo comes from onset-flux autocorrelation with a comb and a 110 BPM
+  prior (no double/half-time errors on steady material). When the chord changes
+  are regular, the fitted change period corrects the octave and decides how many
+  chords belong in a bar (1–4), so bar-delimited charts keep half-bar changes
+- Charts open in the reader as a `chords` song with the detected key and tempo;
+  the player spreads each bar's chords evenly across its four beats. Analysis
+  shows a spinner, a percentage bar and elapsed time
+- Everything runs in the browser: nothing is uploaded, and the app never
+  downloads audio from YouTube or Spotify
 
 **Tuner (`#/tuner`)**
 - Chromatic tuner from the microphone: note, octave, cents and a needle, with an

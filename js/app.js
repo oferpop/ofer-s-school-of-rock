@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112n";
+import { songs, byId, versionsOf } from "./data.js?v=20261112p";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112n";
+} from "./chords.js?v=20261112p";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112n";
+} from "./pro.js?v=20261112p";
 
 import {
   probe,
@@ -38,12 +38,12 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112n";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112n";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112n";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112n";
-import { renderStaff } from "./staff.js?v=20261112n";
-import { detectChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112n";
+} from "./auth.js?v=20261112p";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112p";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112p";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112p";
+import { renderStaff } from "./staff.js?v=20261112p";
+import { chordsToChart, estimateChordsAsync, estimateTempo } from "./transcribe.js?v=20261112p";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1921,27 +1921,27 @@ function transcribeView() {
     <main class="ws transcribe-page">
       <section class="hero">
         <p class="crumb">Tool</p>
-        <h1>Transcribe a solo</h1>
-        <p class="hero-sub">Record yourself (or load an audio file you own) and the detector writes a tab. It follows one pitch at a time — melodies, riffs and solos work; full mixes and chords do not.</p>
-        <p class="hero-sub dim">Audio never leaves this browser: no upload, no YouTube or Spotify download.</p>
+        <h1>Chords from audio</h1>
+        <p class="hero-sub">Load a recording you own and the analyser folds the spectrum into 12 pitch classes, scores them against major, minor, 7th, m7, sus4 and dim shapes, estimates the tempo and writes a chord chart — one chord per bar.</p>
+        <p class="hero-sub dim">Audio never leaves this browser: nothing is uploaded, and the app never downloads from YouTube or Spotify.</p>
       </section>
 
       <div class="transcribe-card">
         <div class="tr-row">
-          <label>Tempo <input id="tr-bpm" type="number" min="40" max="240" step="1" value="100" /></label>
-          <label>Tuning <input id="tr-tuning" value="E A D G B E" /></label>
-        </div>
-        <div class="tr-row tr-actions">
           <label class="pill file-pill">Load audio<input id="tr-file" type="file" accept="audio/*" class="sr-only" /></label>
-          <button class="pill primary" id="tr-record">● Record from mic</button>
-          <button class="pill danger" id="tr-stop" hidden>■ Stop</button>
+          <label>Tempo <input id="tr-bpm" type="number" min="40" max="240" step="1" value="100" /></label>
         </div>
         <div class="tr-progress" id="tr-progress" hidden><span id="tr-fill"></span></div>
-        <p class="tr-status dim"><span class="tr-spinner" id="tr-spinner" hidden></span><span id="tr-status">Ready.</span></p>
-        <textarea id="tr-output" rows="14" spellcheck="false" placeholder="The generated tab appears here…"></textarea>
+        <p class="tr-status dim"><span class="tr-spinner" id="tr-spinner" hidden></span><span id="tr-status">Ready — load an audio file.</span></p>
+        <div class="tr-facts" id="tr-facts" hidden>
+          <span>Key <strong id="tr-key">–</strong></span>
+          <span>Tempo <strong id="tr-tempo">–</strong></span>
+          <span>Bars <strong id="tr-bars">–</strong></span>
+        </div>
+        <textarea id="tr-output" rows="12" spellcheck="false" placeholder="The chord chart appears here…"></textarea>
         <div class="tr-row">
           <button class="pill primary" id="tr-open">Open in reader</button>
-          <button class="pill" id="tr-copy">Copy tab</button>
+          <button class="pill" id="tr-copy">Copy chart</button>
         </div>
       </div>
     </main>`;
@@ -1955,6 +1955,13 @@ function wireTranscribe() {
   const spinner = document.getElementById("tr-spinner");
   const progress = document.getElementById("tr-progress");
   const fill = document.getElementById("tr-fill");
+  const facts = document.getElementById("tr-facts");
+  const keyOut = document.getElementById("tr-key");
+  const tempoOut = document.getElementById("tr-tempo");
+  const barsOut = document.getElementById("tr-bars");
+
+  let result = null;
+  let currentName = "audio";
 
   const setBusy = (busy) => {
     if (spinner) spinner.hidden = !busy;
@@ -1964,11 +1971,13 @@ function wireTranscribe() {
     }
   };
 
-  const tuningValue = () => String(document.getElementById("tr-tuning").value || "").trim() || "E A D G B E";
   const bpmValue = () => clampBpm(Number(document.getElementById("tr-bpm").value) || 100);
 
   const analyse = async (blob, label) => {
     setBusy(true);
+    result = null;
+    currentName = label;
+    if (facts) facts.hidden = true;
     status.textContent = `Decoding ${label}…`;
     const startedAt = performance.now();
     try {
@@ -1976,28 +1985,41 @@ function wireTranscribe() {
       const ctx = new Ctor();
       const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
       const samples = buffer.getChannelData(0);
-      status.textContent = `Analysing ${buffer.duration.toFixed(1)}s…`;
       if (progress) progress.hidden = false;
 
-      const events = await detectChordsAsync(samples, buffer.sampleRate, {}, (fraction) => {
-        const percent = Math.round(fraction * 100);
-        if (fill) fill.style.width = `${percent}%`;
-        status.textContent = `Analysing… ${percent}% · ${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
-      });
-
+      status.textContent = `Detecting tempo of ${buffer.duration.toFixed(1)}s…`;
+      await new Promise((resolve) => setTimeout(resolve, 20));
       const tempo = estimateTempo(samples, buffer.sampleRate);
-      let tempoNote = "";
+      let detectedBpm = bpmValue();
       if (tempo.bpm >= 40 && tempo.confidence > 0.2) {
-        document.getElementById("tr-bpm").value = String(tempo.bpm);
-        tempoNote = ` · tempo ${tempo.bpm} BPM`;
+        detectedBpm = tempo.bpm;
+        document.getElementById("tr-bpm").value = String(detectedBpm);
       }
 
-      output.value = notesToTab(events, { bpm: bpmValue(), tuning: tuningValue() });
+      const found = await estimateChordsAsync(samples, buffer.sampleRate, { bpm: detectedBpm }, (fraction) => {
+        const percent = Math.round(fraction * 100);
+        if (fill) fill.style.width = `${percent}%`;
+        status.textContent = `Reading chords… ${percent}% · ${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
+      });
+
+      result = found;
+      const cellsPerBar = found.cellsPerBar || 1;
+      const barCount = Math.ceil(found.bars.length / cellsPerBar);
+      output.value = chordsToChart(found.bars, { cellsPerBar });
+      document.getElementById("tr-bpm").value = String(found.bpm || detectedBpm);
+
+      const root = (found.key.match(/^[A-G]#?/) || ["C"])[0];
+      if (facts) facts.hidden = false;
+      if (keyOut) keyOut.textContent = found.key || "–";
+      if (tempoOut) tempoOut.textContent = `${found.bpm || detectedBpm} BPM`;
+      if (barsOut) barsOut.textContent = String(barCount);
+
       const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
-      status.textContent = `${events.length} notes/chords${tempoNote} · ${seconds}s`;
+      const chordCount = new Set(found.bars).size;
+      status.textContent = `${barCount} bars · ${chordCount} chords · key ${root} · ${found.bpm || detectedBpm} BPM · ${seconds}s`;
       ctx.close().catch(() => {});
     } catch (error) {
-      status.textContent = `Could not decode that audio (${error.message || error.name}).`;
+      status.textContent = `Could not read that audio (${error.message || error.name}).`;
     } finally {
       setBusy(false);
     }
@@ -2009,58 +2031,21 @@ function wireTranscribe() {
     file.value = "";
   });
 
-  let recorder = null;
-  let chunks = [];
-  const recordButton = document.getElementById("tr-record");
-  const stopButton = document.getElementById("tr-stop");
-
-  recordButton.addEventListener("click", async () => {
-    if (!navigator.mediaDevices || !window.MediaRecorder) {
-      status.textContent = "This browser cannot record audio.";
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      chunks = [];
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-      recorder.onstop = () => {
-        stream.getTracks().forEach((track) => track.stop());
-        recordButton.hidden = false;
-        stopButton.hidden = true;
-        analyse(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), "the recording");
-      };
-      recorder.start();
-      recordButton.hidden = true;
-      stopButton.hidden = false;
-      const startedAt = performance.now();
-      const clock = setInterval(() => {
-        status.textContent = `Recording… ${((performance.now() - startedAt) / 1000).toFixed(1)}s — play your solo, then press Stop.`;
-      }, 200);
-      recorder.addEventListener("stop", () => clearInterval(clock), { once: true });
-    } catch {
-      status.textContent = "Microphone permission was blocked.";
-    }
-  });
-
-  stopButton.addEventListener("click", () => {
-    if (recorder && recorder.state === "recording") recorder.stop();
-  });
-
   document.getElementById("tr-open").addEventListener("click", () => {
     const body = output.value.trim();
-    if (!body) {
-      status.textContent = "Nothing to open yet — record or load audio first.";
+    if (!body || !result) {
+      status.textContent = "Nothing to open yet — load an audio file first.";
       return;
     }
+    const root = (result.key.match(/^[A-G]#?/) || ["C"])[0];
     const song = {
       id: `imported-${Date.now().toString(36)}`,
       imported: true,
-      title: "Transcribed solo",
-      artist: "Transcription",
-      type: "tabs",
-      key: "C",
-      tuning: tuningValue(),
+      title: `Transcribed — ${currentName}`,
+      artist: "From audio",
+      type: "chords",
+      key: root,
+      tuning: "E A D G B E",
       capo: "No capo",
       bpm: bpmValue(),
       difficulty: "intermediate",
@@ -2074,7 +2059,7 @@ function wireTranscribe() {
   document.getElementById("tr-copy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(output.value);
-      status.textContent = "Tab copied.";
+      status.textContent = "Chart copied.";
     } catch {
       status.textContent = "Copy failed — select the text instead.";
     }
