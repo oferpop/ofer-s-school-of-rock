@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112g";
+} from "./chords.js?v=20261112h";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -240,6 +240,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       const blockColumns = Math.max(1, ...rows.map((row) => row.body.replace(/\|/g, "").length));
       const blockStart = timeOffset;
       const blockEnd = timeOffset + blockColumns * step;
+      const lastOnString = new Map();
       ordered.forEach(([column, notes], index) => {
         const midi = [];
         const bend = [];
@@ -249,9 +250,23 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         const dead = [];
         const harmonic = [];
         const slideOff = [];
+        const slideOffAt = [];
+        const slideOffDir = [];
+        const played = [];
+
         for (const note of notes) {
           const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
+
+          // "15vvvvvvv15/": the second 15 is the same note sliding away, not a
+          // new pick. Attach the gesture to the note already sounding.
+          const previous = lastOnString.get(note.rowIndex);
+          if (note.slideOff && previous && previous.fret === note.fret && column - previous.column <= 16) {
+            previous.event.slideOffAt[previous.index] = timeOffset + column * step;
+            previous.event.slideOffDir[previous.index] = note.technique === "\\" ? -1 : 1;
+            continue;
+          }
+
           if (note.kind === "dead") {
             midi.push(stringMidi);
             bend.push(null);
@@ -261,8 +276,12 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             dead.push(true);
             harmonic.push(false);
             slideOff.push(false);
+            slideOffAt.push(null);
+            slideOffDir.push(1);
+            played.push({ rowIndex: note.rowIndex, fret: note.fret });
             continue;
           }
+
           if (note.kind === "harmonic") {
             midi.push(stringMidi + (HARMONIC_OFFSET[note.fret] ?? 12));
             bend.push(null);
@@ -272,8 +291,12 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
             dead.push(false);
             harmonic.push(true);
             slideOff.push(false);
+            slideOffAt.push(null);
+            slideOffDir.push(1);
+            played.push({ rowIndex: note.rowIndex, fret: note.fret });
             continue;
           }
+
           midi.push(stringMidi + note.fret);
           const bendFret = note.target !== null ? note.target : note.bendSemis ? note.fret + note.bendSemis : null;
           bend.push(bendFret !== null ? stringMidi + bendFret : null);
@@ -291,15 +314,20 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           dead.push(false);
           harmonic.push(false);
           slideOff.push(Boolean(note.slideOff));
+          slideOffAt.push(null);
+          slideOffDir.push(1);
+          played.push({ rowIndex: note.rowIndex, fret: note.fret });
         }
+
         if (!midi.length) return;
+
         const next = ordered[index + 1];
         const gapColumns = next ? next[0] - column : blockColumns - column;
         const gap = Math.max(1, gapColumns) * step;
         // A phrase's last note is held for at most two beats, so it does not
         // ring over the next phrase.
         const maxDuration = next ? beat * 4 : beat * 2;
-        events.push({
+        const event = {
           time: timeOffset + column * step,
           blockStart,
           blockEnd,
@@ -312,9 +340,21 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
           dead,
           harmonic,
           slideOff,
+          slideOffAt,
+          slideOffDir,
           duration: Math.max(0.12, Math.min(maxDuration, gap * 0.98)),
           lines: [block.start, block.end],
-        });
+        };
+        events.push(event);
+
+        for (let i = 0; i < played.length; i++) {
+          lastOnString.set(played[i].rowIndex, {
+            event,
+            index: i,
+            column,
+            fret: played[i].fret,
+          });
+        }
       });
 
       // Consecutive tab blocks play one after another, never on top of each other.
@@ -500,6 +540,8 @@ export class TabPlayer {
           event.vibrato?.[i] ?? false,
           event.dead?.[i] ?? false,
           event.slideOff?.[i] ?? false,
+          event.slideOffAt?.[i] ?? null,
+          event.slideOffDir?.[i] ?? 1,
         );
       });
     }
@@ -535,7 +577,7 @@ export class TabPlayer {
     source.stop(end + 0.02);
   }
 
-  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false, slideOff = false) {
+  scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false, slideOff = false, slideAt = null, slideDir = 1) {
     if (dead) {
       this.thump(when, duration);
       return;
@@ -550,7 +592,7 @@ export class TabPlayer {
       this.pluck(bendTo, when + 0.09, Math.max(0.12, duration - 0.09));
       return;
     }
-    this.pluck(midi, when, duration, bendTo, technique, releaseTo, vibrato);
+    this.pluck(midi, when, duration, bendTo, technique, releaseTo, vibrato, slideAt, slideDir);
   }
 
   // Dead note: a short muted thump with no pitch.
@@ -578,7 +620,7 @@ export class TabPlayer {
     source.stop(end + 0.01);
   }
 
-  pluck(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false) {
+  pluck(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, slideAt = null, slideDir = 1) {
     const ctx = this.ctx;
     if (!ctx) return;
     const cached = this.buffers.get(midi);
@@ -586,7 +628,10 @@ export class TabPlayer {
     if (!cached) this.buffers.set(midi, { buffer });
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    const end = when + Math.max(0.15, Math.min(2.7, duration));
+    // A slide attached to a sounding note (15...15/): the note keeps ringing
+    // and glides away at that moment instead of being picked again.
+    const glideAt = slideAt !== null && slideAt !== undefined ? Math.max(when + 0.04, slideAt) : null;
+    const end = glideAt ? glideAt + 0.32 : when + Math.max(0.15, Math.min(2.7, duration));
 
     // Bend or slide: glide the playback rate from the written note to the
     // target fret, so the pitch rises to the note the tab names.
@@ -608,6 +653,12 @@ export class TabPlayer {
       }
     }
 
+    if (glideAt) {
+      source.playbackRate.setValueAtTime(1, when);
+      source.playbackRate.setValueAtTime(1, glideAt);
+      source.playbackRate.linearRampToValueAtTime(2 ** ((slideDir * 2) / 12), glideAt + 0.24);
+    }
+
     // 7~: a gentle vibrato, about ±10 cents at 5.5 Hz.
     if (vibrato) {
       const lfo = ctx.createOscillator();
@@ -621,8 +672,13 @@ export class TabPlayer {
 
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.9, when);
-    gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.06));
-    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    if (glideAt) {
+      gain.gain.setValueAtTime(0.9, glideAt);
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    } else {
+      gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.06));
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    }
     source.connect(gain).connect(this.master);
     source.start(when);
     source.stop(end + 0.02);
