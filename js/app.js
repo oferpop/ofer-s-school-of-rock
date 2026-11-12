@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112e";
+import { songs, byId, versionsOf } from "./data.js?v=20261112f";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112e";
+} from "./chords.js?v=20261112f";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112e";
+} from "./pro.js?v=20261112f";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112e";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112e";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112e";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112e";
-import { renderStaff } from "./staff.js?v=20261112e";
+} from "./auth.js?v=20261112f";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112f";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112f";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112f";
+import { renderStaff } from "./staff.js?v=20261112f";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -743,7 +743,9 @@ function youtubeId(input) {
 
 function videoPanel(song) {
   if (!state.showVideo) return "";
-  const video = state.videos[song.id];
+  const saved = state.videos[song.id];
+  const builtin = !saved && song.youtube ? { id: song.youtube, builtin: true } : null;
+  const video = saved || builtin;
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
     `${song.artist} ${song.title}`,
   )}`;
@@ -756,12 +758,13 @@ function videoPanel(song) {
           <button class="video-poster" data-video-play aria-label="Play video">
             <span class="video-play" aria-hidden="true">▶</span>
             <span class="video-title">${esc(video.title || `${song.title} — ${song.artist}`)}</span>
-            <span class="video-sub">Play video · YouTube loads only when pressed</span>
+            <span class="video-sub">${builtin ? "Built-in video" : "Your video"} · YouTube loads only when pressed</span>
           </button>
         </div>
         <div class="video-actions">
+          <a class="pill" href="https://www.youtube.com/watch?v=${esc(video.id)}" target="_blank" rel="noopener noreferrer">Watch on YouTube</a>
           <button class="pill" id="video-edit">Replace video</button>
-          <button class="pill danger" id="video-remove">Remove</button>
+          ${builtin ? "" : `<button class="pill danger" id="video-remove">Remove</button>`}
           <a class="pill" href="${searchUrl}" target="_blank" rel="noopener noreferrer">Find another</a>
         </div>
       </section>`;
@@ -963,7 +966,13 @@ function songView(id) {
 
         <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span> Capo: ${esc(
           song.capo,
-        )}</p>
+        )}${
+          song.youtube
+            ? ` <span>·</span> <a class="youtube-link" href="https://www.youtube.com/watch?v=${esc(
+                song.youtube,
+              )}" target="_blank" rel="noopener noreferrer">YouTube</a>`
+            : ""
+        }</p>
 
         <div class="practice-bar">
           <span class="pb-label">Practice</span>

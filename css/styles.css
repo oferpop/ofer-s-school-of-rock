@@ -778,6 +778,16 @@ input {
   margin: 0 4px;
 }
 
+.youtube-link {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.youtube-link:hover {
+  color: var(--accent);
+}
+
 /* ---------- sheet ---------- */
 
 .sheet-wrap {

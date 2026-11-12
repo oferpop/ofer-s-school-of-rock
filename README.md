@@ -80,9 +80,11 @@ The app also runs on any static host with **guest mode only**: without
   highlighted line and playhead on the note you owe. It accepts the same pitch
   class an octave away (melodies are often played in another position), needs a
   new attack for repeated notes, and Skip moves on; it stops at the end
-- **Video** — paste a YouTube link per song; it is saved with the tab and
-  synced to the account. The poster never contacts YouTube: the
-  `youtube-nocookie` iframe is created only when you press play
+- **Video** — every catalog song ships with a YouTube video (each id checked
+  with YouTube's oEmbed endpoint); a link you paste replaces it and is saved
+  with the tab and synced to the account. There is also a direct “YouTube” link
+  on the tab line. The poster never contacts YouTube: the `youtube-nocookie`
+  iframe is created only when you press play
 - **Add to playlist** from the toolbar, or create a playlist in place
 - **Metronome** — 40–240 BPM, ±5 steps, tap tempo, 2/3/4/6 beats per bar with an
   accented downbeat and a beat indicator
