@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261111L";
+} from "./chords.js?v=20261112d";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -407,6 +407,11 @@ export async function countIn(bpm, beats = 4) {
   }
   await new Promise((resolve) => setTimeout(resolve, beats * beat * 1000 + 80));
   ctx.close().catch(() => {});
+}
+
+// Does the played pitch land on one of the notes written at this point?
+export function matchesTargets(detectedMidi, targets, tolerance = 0.6) {
+  return targets.some((target) => Math.abs(detectedMidi - target) <= tolerance);
 }
 
 export class TabPlayer {

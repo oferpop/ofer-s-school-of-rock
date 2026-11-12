@@ -2247,6 +2247,50 @@ input {
   transition: width 0.12s linear;
 }
 
+.follow-bar {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.follow-bar[hidden] {
+  display: none;
+}
+
+.follow-note {
+  min-width: 54px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+}
+
+.follow-status {
+  font-size: 13px;
+}
+
+.follow-heard {
+  margin-left: auto;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.follow-score {
+  font-size: 12.5px;
+}
+
+.follow-bar.is-correct {
+  border-color: var(--green);
+  box-shadow: inset 0 0 0 1px rgba(74, 222, 128, 0.3);
+}
+
 /* A block of ASCII tablature, with a playhead that follows the player. */
 .tab-block {
   position: relative;

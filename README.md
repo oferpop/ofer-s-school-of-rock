@@ -75,6 +75,10 @@ The app also runs on any static host with **guest mode only**: without
   the range is drawn on the rows and on the progress bar and repeats until you
   clear it; the A and B buttons drop boundaries at the playhead
 - **Space** toggles play/pause anywhere on a song page (except while typing)
+- **Follow** — listens to the microphone (same tuner engine), shows the note the
+  tab expects next, advances when you play it, counts wrong notes, and keeps the
+  highlighted line and playhead on the note you owe. A new attack is required for
+  repeated notes; Skip moves on, and it stops itself at the end
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play

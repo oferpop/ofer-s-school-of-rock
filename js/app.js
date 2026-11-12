@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261111L";
+import { songs, byId, versionsOf } from "./data.js?v=20261112d";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261111L";
+} from "./chords.js?v=20261112d";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261111L";
+} from "./pro.js?v=20261112d";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261111L";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261111L";
-import { Tuner, TUNINGS } from "./tuner.js?v=20261111L";
-import { parseSong, TabPlayer, countIn, tabBlockEnd } from "./player.js?v=20261111L";
-import { renderStaff } from "./staff.js?v=20261111L";
+} from "./auth.js?v=20261112d";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112d";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112d";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112d";
+import { renderStaff } from "./staff.js?v=20261112d";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -98,6 +98,16 @@ const playerState = {
 };
 
 let playerTicker = null;
+
+const followState = {
+  active: false,
+  index: 0,
+  correct: 0,
+  wrong: 0,
+  armed: true,
+  lastHeard: 0,
+  flashTimer: null,
+};
 
 let autoScrollRaf = null;
 let practiceTimer = null;
@@ -231,6 +241,7 @@ window.addEventListener("hashchange", () => {
   stopMetronome();
   stopPractice();
   stopTuner();
+  stopFollow();
   stopPlayer();
   playerState.loopStart = 0;
   playerState.loopEnd = 0;
@@ -1252,6 +1263,7 @@ function playerBar() {
       <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
       <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
       <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
+      <button class="pill ${followState.active ? "is-on" : ""}" id="player-follow" aria-pressed="${followState.active}" title="Listen to you play and follow the tab">Follow</button>
       <span class="player-time dim" id="player-time">${time} / ${total}</span>
       <span class="player-kind dim" id="player-kind">${
         playerState.parsed ? (playerState.parsed.kind === "tab" ? "Tablature" : "Chords") : ""
@@ -1260,6 +1272,13 @@ function playerBar() {
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
         <span class="player-loop-range" id="player-loop-range" hidden></span>
         <span class="player-progress-fill" id="player-progress-fill"></span>
+      </div>
+      <div class="follow-bar" id="follow-bar" ${followState.active ? "" : "hidden"}>
+        <span class="follow-note" id="follow-note">—</span>
+        <span class="follow-status" id="follow-status">Play the highlighted note</span>
+        <span class="follow-heard dim" id="follow-heard"></span>
+        <span class="follow-score dim" id="follow-score"></span>
+        <button class="pill" id="follow-skip">Skip</button>
       </div>
     </div>`;
 }
@@ -1296,6 +1315,14 @@ function updatePlayerBar() {
     if (bar) bar.setAttribute("aria-valuenow", String(Math.round(pct)));
   }
 
+  const followButton = document.getElementById("player-follow");
+  if (followButton) {
+    followButton.classList.toggle("is-on", followState.active);
+    followButton.setAttribute("aria-pressed", String(followState.active));
+  }
+  const followBar = document.getElementById("follow-bar");
+  if (followBar) followBar.hidden = !followState.active;
+
   const kind = document.getElementById("player-kind");
   if (kind && playerState.parsed) {
     kind.textContent = playerState.parsed.kind === "tab" ? "Tablature" : "Chords";
@@ -1331,6 +1358,122 @@ function highlightRange(range) {
   if (rect.top < 0 || rect.bottom > window.innerHeight) {
     target.scrollIntoView({ block: "center", behavior: "smooth" });
   }
+}
+
+// --- follow mode --------------------------------------------------------
+
+function followEvent() {
+  return playerState.parsed?.events[followState.index] || null;
+}
+
+function followLabel(event) {
+  if (!event) return "—";
+  const first = midiToNote(event.midi[0]);
+  return event.midi.length > 1 ? `${first.name}${first.octave} +${event.midi.length - 1}` : `${first.name}${first.octave}`;
+}
+
+function paintFollow() {
+  const event = followEvent();
+  const note = document.getElementById("follow-note");
+  if (note) note.textContent = followLabel(event);
+  const status = document.getElementById("follow-status");
+  if (status) status.textContent = event ? "Play the highlighted note" : "Done — nice work";
+  const score = document.getElementById("follow-score");
+  if (score) score.textContent = `${followState.correct} ✓ · ${followState.wrong} ✗`;
+  const bar = document.getElementById("follow-bar");
+  if (bar) bar.hidden = !followState.active;
+  if (!event) {
+    highlightRange(null);
+    clearTimeout(followState.endTimer);
+    followState.endTimer = setTimeout(() => stopFollow(), 2500);
+    return;
+  }
+  clearTimeout(followState.endTimer);
+  highlightRange(event.lines);
+  paintPlayheadAtTime(event.time);
+}
+
+function onFollowPitch(reading) {
+  if (!followState.active) return;
+  const event = followEvent();
+  if (!event) return;
+
+  const heard = reading.midi + reading.cents / 100;
+  const now = performance.now();
+  const gap = now - (followState.lastHeard || 0);
+  followState.lastHeard = now;
+  if (gap > 180) followState.armed = true;
+
+  const heardNote = midiToNote(reading.midi);
+  const heardEl = document.getElementById("follow-heard");
+  if (heardEl) {
+    heardEl.textContent = `${heardNote.name}${heardNote.octave} ${reading.cents > 0 ? "+" : ""}${reading.cents}¢`;
+  }
+
+  if (matchesTargets(heard, event.midi)) {
+    if (!followState.armed) return;
+    followState.armed = false;
+    followState.correct += 1;
+    const bar = document.getElementById("follow-bar");
+    if (bar) {
+      bar.classList.add("is-correct");
+      clearTimeout(followState.flashTimer);
+      followState.flashTimer = setTimeout(() => bar.classList.remove("is-correct"), 320);
+    }
+    followState.index += 1;
+    paintFollow();
+    return;
+  }
+
+  const expected = event.midi[0];
+  if (followState.armed && Math.abs(heard - expected) > 1.2) {
+    followState.armed = false;
+    followState.wrong += 1;
+    const status = document.getElementById("follow-status");
+    if (status) {
+      status.textContent = `Heard ${heardNote.name}${heardNote.octave} — expected ${followLabel(event)}`;
+    }
+    const score = document.getElementById("follow-score");
+    if (score) score.textContent = `${followState.correct} ✓ · ${followState.wrong} ✗`;
+  }
+}
+
+function showFollowError(message) {
+  followState.active = false;
+  updatePlayerBar();
+  const bar = document.getElementById("follow-bar");
+  if (bar) bar.hidden = false;
+  const status = document.getElementById("follow-status");
+  if (status) status.textContent = message;
+}
+
+async function startFollow(song) {
+  const parsed = ensureParsed(song);
+  if (!parsed.events.length) return;
+  if (playerState.status === "playing") stopPlayer();
+  followState.active = true;
+  followState.index = 0;
+  followState.correct = 0;
+  followState.wrong = 0;
+  followState.armed = true;
+  followState.lastHeard = 0;
+  updatePlayerBar();
+  paintFollow();
+
+  const started = await tuner.start({ onResult: onFollowPitch, onError: showFollowError });
+  if (!started) {
+    // Keep the microphone error visible instead of hiding the strip.
+    followState.active = false;
+  }
+}
+
+function stopFollow() {
+  if (followState.active) tuner.stop();
+  followState.active = false;
+  clearTimeout(followState.flashTimer);
+  const bar = document.getElementById("follow-bar");
+  if (bar) bar.hidden = true;
+  updatePlayerBar();
 }
 
 function stopPlayer() {
@@ -1591,6 +1734,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
 }
 
 async function togglePlayer(song) {
+  if (followState.active) stopFollow();
   if (playerState.status === "playing") {
     tabPlayer.pause();
     stopTicker();
@@ -1649,6 +1793,23 @@ function wirePlayer(song) {
   if (markA) markA.addEventListener("click", () => markLoopPoint(song, "a"));
   const markB = document.getElementById("loop-b");
   if (markB) markB.addEventListener("click", () => markLoopPoint(song, "b"));
+
+  const followButton = document.getElementById("player-follow");
+  if (followButton) {
+    followButton.addEventListener("click", () => {
+      if (followState.active) stopFollow();
+      else startFollow(song);
+    });
+  }
+  const followSkip = document.getElementById("follow-skip");
+  if (followSkip) {
+    followSkip.addEventListener("click", () => {
+      if (!followState.active) return;
+      followState.index += 1;
+      followState.armed = true;
+      paintFollow();
+    });
+  }
 
   const progress = document.getElementById("player-progress");
   progress.addEventListener("click", (event) => {

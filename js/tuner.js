@@ -57,6 +57,15 @@ export const TUNINGS = {
   },
 };
 
+export function midiToNote(midi) {
+  const rounded = Math.round(midi);
+  return {
+    midi: rounded,
+    name: NOTE_NAMES[((rounded % 12) + 12) % 12],
+    octave: Math.floor(rounded / 12) - 1,
+  };
+}
+
 export function noteFromFrequency(frequency, a4 = 440) {
   const midiFloat = 69 + 12 * Math.log2(frequency / a4);
   const midi = Math.round(midiFloat);
