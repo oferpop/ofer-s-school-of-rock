@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112ba";
+import { songs, byId, versionsOf } from "./data.js?v=20261112az";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112ba";
+} from "./chords.js?v=20261112az";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112ba";
+} from "./pro.js?v=20261112az";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112ba";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ba";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ba";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ba";
-import { renderStaff } from "./staff.js?v=20261112ba";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ba";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ba";
+} from "./auth.js?v=20261112az";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112az";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112az";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112az";
+import { renderStaff } from "./staff.js?v=20261112az";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112az";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112az";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
