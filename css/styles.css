@@ -581,9 +581,18 @@ input {
   text-align: center;
 }
 
+.rail-player .player-time {
+  order: 10;
+}
+
 .rail-player .player-progress {
+  order: 11;
   flex: none;
   width: 100%;
+}
+
+.rail-player .player-kind {
+  order: 12;
 }
 
 .rail-auth {
