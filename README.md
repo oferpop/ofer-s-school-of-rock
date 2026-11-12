@@ -61,7 +61,9 @@ The app also runs on any static host with **guest mode only**: without
 - **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
-  chord lines one bar each, with synthesized plucks, BPM, count-in and loop.
+  chord lines one bar each, with synthesized plucks, count-in and loop. Every
+  song opens at its own tempo (the catalog ships the original BPM; imports read
+  `Tempo: 120` from the pasted text or use the field).
   Bends (`7b9`), bend-and-release (`7b9r7`), slides (`7/9`, `9\7`),
   hammer-ons/pull-offs (`7h9`) and vibrato (`7~`) are played as pitch movement
   or articulated note pairs, not as separate columns; dead notes (`x`) become

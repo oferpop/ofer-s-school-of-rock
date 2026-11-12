@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112f";
+import { songs, byId, versionsOf } from "./data.js?v=20261112g";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112f";
+} from "./chords.js?v=20261112g";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112f";
+} from "./pro.js?v=20261112g";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112f";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112f";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112f";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112f";
-import { renderStaff } from "./staff.js?v=20261112f";
+} from "./auth.js?v=20261112g";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112g";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112g";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112g";
+import { renderStaff } from "./staff.js?v=20261112g";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -95,6 +95,7 @@ const playerState = {
   songId: null,
   loopStart: 0,
   loopEnd: 0,
+  tempoSongId: null,
 };
 
 let playerTicker = null;
@@ -819,6 +820,13 @@ function songView(id) {
   if (!song) {
     return `<main class="ws"><p class="empty">That tab does not exist. <a href="#/">Back to the catalog</a>.</p></main>`;
   }
+  // Each song carries its own tempo: load it for the player and metronome.
+  if (playerState.tempoSongId !== song.id) {
+    playerState.tempoSongId = song.id;
+    playerState.bpm = clampBpm(Number(song.bpm) || 100);
+    metro.setBpm(playerState.bpm);
+  }
+
   const importedSong = isImported(song);
   const versions = importedSong ? [] : versionsOf(song);
   const isSaved = state.saved.has(song.id);
@@ -966,7 +974,7 @@ function songView(id) {
 
         <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span> Capo: ${esc(
           song.capo,
-        )}${
+        )} <span>·</span> Tempo: ${clampBpm(Number(song.bpm) || 100)} BPM${
           song.youtube
             ? ` <span>·</span> <a class="youtube-link" href="https://www.youtube.com/watch?v=${esc(
                 song.youtube,
@@ -2319,6 +2327,7 @@ function importView() {
           <label>Key <input name="key" placeholder="Em" size="6" value="${pre("key")}" /></label>
           <label>Tuning <input name="tuning" placeholder="E A D G B E" value="${pre("tuning", "E A D G B E")}" /></label>
           <label>Capo <input name="capo" placeholder="No capo" value="${pre("capo", "No capo")}" /></label>
+          <label>Tempo <input name="bpm" type="number" min="40" max="240" step="1" placeholder="100" value="${pre("bpm", "100")}" /></label>
         </div>
         <label class="body-field">Tab text
           <textarea name="body" required rows="14" spellcheck="false"
@@ -3184,14 +3193,27 @@ function splitAlbum(body) {
     .filter((track) => track.body);
 }
 
+function detectTempo(text) {
+  const match = String(text).match(/\b(?:tempo|bpm)\s*[:=]?\s*(\d{2,3})\b/i);
+  const value = match ? Number(match[1]) : 0;
+  return value >= 40 && value <= 240 ? value : 0;
+}
+
 function wireImport() {
   const form = document.getElementById("import-form");
   if (!form) return;
 
   const bodyField = form.querySelector("[name=body]");
+  const bpmField = form.querySelector("[name=bpm]");
+  let bpmTouched = false;
+  if (bpmField) bpmField.addEventListener("input", () => { bpmTouched = true; });
   const splitBox = document.getElementById("split-album");
   const splitHint = document.getElementById("split-hint");
   const updateSplit = () => {
+    if (bpmField && !bpmTouched) {
+      const detected = detectTempo(bodyField.value);
+      if (detected) bpmField.value = String(detected);
+    }
     const tracks = splitAlbum(bodyField.value);
     if (!tracks) {
       splitBox.checked = false;
@@ -3221,6 +3243,7 @@ function wireImport() {
     const key = text("key", "C");
     const tuning = text("tuning", "E A D G B E");
     const capo = text("capo", "No capo");
+    const bpm = clampBpm(Number(data.get("bpm")) || detectTempo(body) || 100);
 
     const tracks = data.get("split") ? splitAlbum(body) : null;
     if (tracks && tracks.length > 1) {
@@ -3234,6 +3257,7 @@ function wireImport() {
         key,
         tuning: trackTuning(track.body, tuning),
         capo,
+        bpm: detectTempo(track.body) || bpm,
         difficulty: "intermediate",
         body: track.body,
       }));
@@ -3258,6 +3282,7 @@ function wireImport() {
       key,
       tuning,
       capo,
+      bpm,
       difficulty: "intermediate",
       body,
     };
