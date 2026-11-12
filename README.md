@@ -108,6 +108,14 @@ The app also runs on any static host with **guest mode only**: without
 - Four short original lessons: reading a chord sheet, transpose/capo, practising
   with the metronome, building a set list
 
+**Transcribe (`#/transcribe`)**
+- Record from the microphone or load an audio file you own; the YIN detector
+  runs over short frames, groups them into notes, quantises to a 16th grid at
+  the chosen tempo, maps each pitch to the highest playable string and writes
+  ASCII tab that opens in the reader
+- Monophonic material (melodies, riffs, solos) works; full mixes and chords do
+  not. Nothing is uploaded, and the app never downloads YouTube or Spotify audio
+
 **Tuner (`#/tuner`)**
 - Chromatic tuner from the microphone: note, octave, cents and a needle, with an
   in-tune band of ±5 cents

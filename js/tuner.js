@@ -82,7 +82,7 @@ export function noteFromFrequency(frequency, a4 = 440) {
 // YIN-style pitch detection: difference function, cumulative-mean
 // normalisation, then the first dip under a threshold. More reliable than raw
 // autocorrelation for low guitar strings, where short lags otherwise win.
-function detectPitch(buffer, sampleRate) {
+export function detectPitch(buffer, sampleRate) {
   const size = buffer.length;
   let energy = 0;
   for (let i = 0; i < size; i++) energy += buffer[i] * buffer[i];

@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112j";
+import { songs, byId, versionsOf } from "./data.js?v=20261112k";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112j";
+} from "./chords.js?v=20261112k";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112j";
+} from "./pro.js?v=20261112k";
 
 import {
   probe,
@@ -38,11 +38,12 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112j";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112j";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112j";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112j";
-import { renderStaff } from "./staff.js?v=20261112j";
+} from "./auth.js?v=20261112k";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112k";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112k";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112k";
+import { renderStaff } from "./staff.js?v=20261112k";
+import { detectNotes, notesToTab } from "./transcribe.js?v=20261112k";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -230,6 +231,7 @@ function route() {
   if (parts[0] === "artist" && parts[1]) return { view: "artist", slug: decodeURIComponent(parts[1]) };
   if (parts[0] === "charts") return { view: "charts" };
   if (parts[0] === "tuner") return { view: "tuner" };
+  if (parts[0] === "transcribe") return { view: "transcribe" };
   if (parts[0] === "learn") return { view: "learn" };
   if (parts[0] === "login") return { view: "auth", mode: "login" };
   if (parts[0] === "signup") return { view: "auth", mode: "signup" };
@@ -285,6 +287,7 @@ function header() {
         <a href="#/artists" class="${view === "artists" || view === "artist" ? "is-active" : ""}">Artists</a>
         <a href="#/charts" class="${view === "charts" ? "is-active" : ""}">Charts</a>
         <a href="#/tuner" class="${view === "tuner" ? "is-active" : ""}">Tuner</a>
+        <a href="#/transcribe" class="${view === "transcribe" ? "is-active" : ""}">Transcribe</a>
         <a href="#/saved" class="${view === "saved" ? "is-active" : ""}">My tabs</a>
         <a href="#/playlists" class="${view === "playlists" || view === "playlist" ? "is-active" : ""}">Playlists</a>
         <a href="#/import" class="${view === "import" ? "is-active" : ""}">Import</a>
@@ -1913,6 +1916,136 @@ function wirePlayer(song) {
 
 }
 
+function transcribeView() {
+  return `
+    <main class="ws transcribe-page">
+      <section class="hero">
+        <p class="crumb">Tool</p>
+        <h1>Transcribe a solo</h1>
+        <p class="hero-sub">Record yourself (or load an audio file you own) and the detector writes a tab. It follows one pitch at a time — melodies, riffs and solos work; full mixes and chords do not.</p>
+        <p class="hero-sub dim">Audio never leaves this browser: no upload, no YouTube or Spotify download.</p>
+      </section>
+
+      <div class="transcribe-card">
+        <div class="tr-row">
+          <label>Tempo <input id="tr-bpm" type="number" min="40" max="240" step="1" value="100" /></label>
+          <label>Tuning <input id="tr-tuning" value="E A D G B E" /></label>
+        </div>
+        <div class="tr-row tr-actions">
+          <label class="pill file-pill">Load audio<input id="tr-file" type="file" accept="audio/*" class="sr-only" /></label>
+          <button class="pill primary" id="tr-record">● Record from mic</button>
+          <button class="pill danger" id="tr-stop" hidden>■ Stop</button>
+        </div>
+        <p class="tr-status dim" id="tr-status">Ready.</p>
+        <textarea id="tr-output" rows="14" spellcheck="false" placeholder="The generated tab appears here…"></textarea>
+        <div class="tr-row">
+          <button class="pill primary" id="tr-open">Open in reader</button>
+          <button class="pill" id="tr-copy">Copy tab</button>
+        </div>
+      </div>
+    </main>`;
+}
+
+function wireTranscribe() {
+  const file = document.getElementById("tr-file");
+  if (!file) return;
+  const status = document.getElementById("tr-status");
+  const output = document.getElementById("tr-output");
+
+  const tuningValue = () => String(document.getElementById("tr-tuning").value || "").trim() || "E A D G B E";
+  const bpmValue = () => clampBpm(Number(document.getElementById("tr-bpm").value) || 100);
+
+  const analyse = async (blob, label) => {
+    status.textContent = `Decoding ${label}…`;
+    try {
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctor();
+      const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+      status.textContent = `Analysing ${buffer.duration.toFixed(1)}s…`;
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const notes = detectNotes(buffer.getChannelData(0), buffer.sampleRate);
+      output.value = notesToTab(notes, { bpm: bpmValue(), tuning: tuningValue() });
+      status.textContent = `${notes.length} notes found in ${buffer.duration.toFixed(1)}s`;
+      ctx.close().catch(() => {});
+    } catch (error) {
+      status.textContent = `Could not decode that audio (${error.message || error.name}).`;
+    }
+  };
+
+  file.addEventListener("change", () => {
+    const chosen = file.files && file.files[0];
+    if (chosen) analyse(chosen, chosen.name);
+    file.value = "";
+  });
+
+  let recorder = null;
+  let chunks = [];
+  const recordButton = document.getElementById("tr-record");
+  const stopButton = document.getElementById("tr-stop");
+
+  recordButton.addEventListener("click", async () => {
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      status.textContent = "This browser cannot record audio.";
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      chunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        recordButton.hidden = false;
+        stopButton.hidden = true;
+        analyse(new Blob(chunks, { type: recorder.mimeType || "audio/webm" }), "the recording");
+      };
+      recorder.start();
+      recordButton.hidden = true;
+      stopButton.hidden = false;
+      status.textContent = "Recording… play your solo, then press Stop.";
+    } catch {
+      status.textContent = "Microphone permission was blocked.";
+    }
+  });
+
+  stopButton.addEventListener("click", () => {
+    if (recorder && recorder.state === "recording") recorder.stop();
+  });
+
+  document.getElementById("tr-open").addEventListener("click", () => {
+    const body = output.value.trim();
+    if (!body) {
+      status.textContent = "Nothing to open yet — record or load audio first.";
+      return;
+    }
+    const song = {
+      id: `imported-${Date.now().toString(36)}`,
+      imported: true,
+      title: "Transcribed solo",
+      artist: "Transcription",
+      type: "tabs",
+      key: "C",
+      tuning: tuningValue(),
+      capo: "No capo",
+      bpm: bpmValue(),
+      difficulty: "intermediate",
+      body,
+    };
+    imported = [song, ...imported];
+    persistImported();
+    go(`#/song/${encodeURIComponent(song.id)}`);
+  });
+
+  document.getElementById("tr-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(output.value);
+      status.textContent = "Tab copied.";
+    } catch {
+      status.textContent = "Copy failed — select the text instead.";
+    }
+  });
+}
+
 // --- accounts -----------------------------------------------------------
 
 function emptyState(snapshot) {
@@ -2469,6 +2602,7 @@ function render() {
   else if (r.view === "artist") body = artistView(r.slug);
   else if (r.view === "charts") body = chartsView();
   else if (r.view === "tuner") body = tunerView();
+  else if (r.view === "transcribe") body = transcribeView();
   else if (r.view === "learn") body = learnView();
   else if (r.view === "auth") body = authView(r.mode);
   else body = exploreView();
@@ -2553,6 +2687,7 @@ function wire() {
   wirePro();
   wireAuth();
   wireTuner();
+  wireTranscribe();
 
   const song = route().view === "song" ? findSong(route().id) : null;
   if (!song) return;

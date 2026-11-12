@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112h";
+} from "./chords.js?v=20261112k";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -27,7 +27,7 @@ const TUNINGS = {
 // Standard guitar intervals for a tuning we do not have a table for.
 const STRING_PC = { E: 4, A: 9, D: 2, G: 7, B: 11, C: 0 };
 
-function tuningMidi(tuning) {
+export function tuningToMidi(tuning) {
   const key = String(tuning || "").replace(/\s+/g, " ").trim().toUpperCase();
   if (TUNINGS[key]) return TUNINGS[key];
   const names = key.split(" ").filter(Boolean);
@@ -194,7 +194,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
   const lines = song.body.replace(/[\u2013\u2014]/g, "-").split("\n");
   const beat = 60 / bpm;
   const step = beat / 4;
-  const tuning = tuningMidi(song.tuning);
+  const tuning = tuningToMidi(song.tuning);
   const events = [];
   const tabBlocks = [];
 

@@ -2020,6 +2020,74 @@ input {
   font-size: 13px;
 }
 
+.transcribe-page {
+  max-width: 860px;
+}
+
+.transcribe-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-elev);
+}
+
+.tr-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.tr-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: var(--dim);
+}
+
+.tr-row input {
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13.5px;
+  text-transform: none;
+  letter-spacing: normal;
+  outline: none;
+}
+
+.tr-row input:focus {
+  border-color: #4b4b53;
+}
+
+#tr-output {
+  width: 100%;
+  padding: 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre;
+  resize: vertical;
+  outline: none;
+}
+
+.tr-status {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: 12.5px;
+}
+
 .tone-row {
   display: flex;
   gap: 8px;
