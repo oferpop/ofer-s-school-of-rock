@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112af";
+import { songs, byId, versionsOf } from "./data.js?v=20261112ai";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112af";
+} from "./chords.js?v=20261112ai";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112af";
+} from "./pro.js?v=20261112ai";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112af";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112af";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112af";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112af";
-import { renderStaff } from "./staff.js?v=20261112af";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112af";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112af";
+} from "./auth.js?v=20261112ai";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ai";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ai";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ai";
+import { renderStaff } from "./staff.js?v=20261112ai";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ai";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ai";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -61,6 +61,13 @@ function loadCapos() {
 
 function persistCapos(map) {
   localStorage.setItem(CAPOS_KEY, JSON.stringify(map));
+}
+
+function loadClickVolume() {
+  const raw = localStorage.getItem("osr.player.clickvolume");
+  if (raw === null) return 55;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 55;
 }
 
 function clampCapo(value) {
@@ -118,6 +125,7 @@ const playerState = {
   countIn: localStorage.getItem("osr.player.countin") !== "off",
   loop: localStorage.getItem("osr.player.loop") === "on",
   click: localStorage.getItem("osr.player.click") === "on",
+  clickVolume: loadClickVolume(),
   status: "stopped",
   parsed: null,
   songId: null,
@@ -1392,6 +1400,11 @@ function playerBar(song = null) {
       </div>
       <button class="pill ${playerState.countIn ? "is-on" : ""}" id="player-countin" aria-pressed="${playerState.countIn}">Count-in</button>
       <button class="pill ${playerState.click ? "is-on" : ""}" id="player-click" aria-pressed="${playerState.click}" title="Metronome click on every beat">Click</button>
+      <span class="click-volume-wrap" title="Click volume">
+        <input class="click-volume" id="player-click-volume" type="range" min="0" max="100" step="1"
+               value="${playerState.clickVolume}" aria-label="Click volume" />
+        <span class="click-volume-value dim" id="player-click-volume-value">${playerState.clickVolume}%</span>
+      </span>
       <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
       <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
       <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
@@ -1849,12 +1862,13 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
   if (playerState.countIn && from <= 0.001) {
     playerState.status = "countin";
     updatePlayerBar();
-    await countIn(playerState.bpm, 4);
+    await countIn(playerState.bpm, 4, playerState.clickVolume / 100);
     if (playerState.status !== "countin") return; // stopped during the count-in
   }
 
   tabPlayer.load(parsed, { bpm: playerState.bpm });
   tabPlayer.click = playerState.click;
+  tabPlayer.clickVolume = playerState.clickVolume / 100;
   tabPlayer.position = from;
   tabPlayer.loopStart = playerState.loop ? playerState.loopStart : 0;
   tabPlayer.loopEnd = playerState.loop ? playerState.loopEnd : 0;
@@ -1862,6 +1876,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
     from,
     loop: playerState.loop,
     click: playerState.click,
+    clickVolume: playerState.clickVolume / 100,
     onLine: highlightRange,
     onState: (status) => {
       if (status === "ended" || status === "stopped" || status === "paused") {
@@ -1891,7 +1906,7 @@ async function togglePlayer(song) {
     stopTicker();
     playerState.status = "paused";
   } else if (playerState.status === "paused") {
-    await tabPlayer.resume({ loop: playerState.loop, click: playerState.click });
+    await tabPlayer.resume({ loop: playerState.loop, click: playerState.click, clickVolume: playerState.clickVolume / 100 });
     playerState.status = "playing";
     startTicker();
   } else {
@@ -1938,6 +1953,20 @@ function wirePlayer(song) {
       clickButton.setAttribute("aria-pressed", String(playerState.click));
       if (playerState.status === "playing") seekPlayer(song, tabPlayer.elapsed());
     });
+  }
+
+  const clickVolume = document.getElementById("player-click-volume");
+  if (clickVolume) {
+    const applyClickVolume = () => {
+      const value = Math.max(0, Math.min(100, Number(clickVolume.value) || 0));
+      playerState.clickVolume = value;
+      localStorage.setItem("osr.player.clickvolume", String(value));
+      tabPlayer.setClickVolume(value / 100);
+      const label = document.getElementById("player-click-volume-value");
+      if (label) label.textContent = `${value}%`;
+    };
+    clickVolume.addEventListener("input", applyClickVolume);
+    tabPlayer.setClickVolume(playerState.clickVolume / 100);
   }
 
   const loopButton = document.getElementById("player-loop");

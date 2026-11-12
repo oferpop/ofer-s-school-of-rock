@@ -64,7 +64,9 @@ The app also runs on any static host with **guest mode only**: without
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Click** — a metronome click on every beat while the player runs, accented
   on the bar's first beat and aligned with the score/tab tempo. Toggle it from
-  the player bar; the choice is remembered
+  the player bar; the choice is remembered. A volume slider sits next to the
+  toggle (0–100%, default 55%) and also sets the count-in level; both are
+  remembered
 - Click any note in an imported score to seek the player to that note (and
   start playing from there); tab/tab-line clicks already do the same
 - **Play tab** — plays what is written: ASCII tablature note by note, or the

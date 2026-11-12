@@ -2609,6 +2609,24 @@ input {
 
 /* ---------- tab player ---------- */
 
+.click-volume-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.click-volume {
+  width: 82px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.click-volume-value {
+  min-width: 32px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 .player-bar {
   display: flex;
   align-items: center;

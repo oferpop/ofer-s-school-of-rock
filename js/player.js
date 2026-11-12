@@ -8,8 +8,8 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112af";
-import { notationToParsed } from "./notation.js?v=20261112af";
+} from "./chords.js?v=20261112ai";
+import { notationToParsed } from "./notation.js?v=20261112ai";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -525,21 +525,24 @@ function pluckBuffer(ctx, midi) {
   return { buffer, frequency };
 }
 
-export async function countIn(bpm, beats = 4) {
+export async function countIn(bpm, beats = 4, volume = 1) {
   const Ctor = window.AudioContext || window.webkitAudioContext;
   if (!Ctor) return;
   const ctx = new Ctor();
   if (ctx.state === "suspended") await ctx.resume();
   const beat = 60 / bpm;
   const start = ctx.currentTime + 0.05;
+  const level = Math.max(0, Math.min(1, Number(volume) || 0));
   for (let i = 0; i < beats; i++) {
     const when = start + i * beat;
+    const peak = (i === 0 ? 0.28 : 0.16) * level;
+    if (peak <= 0.0001) continue;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "square";
     osc.frequency.value = i === 0 ? 1600 : 1000;
     gain.gain.setValueAtTime(0.0001, when);
-    gain.gain.exponentialRampToValueAtTime(i === 0 ? 0.28 : 0.16, when + 0.003);
+    gain.gain.exponentialRampToValueAtTime(peak, when + 0.003);
     gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
     osc.connect(gain).connect(ctx.destination);
     osc.start(when);
@@ -584,6 +587,8 @@ export class TabPlayer {
     this.loopStart = 0;
     this.loopEnd = 0;
     this.click = false;
+    this.clickVolume = 0.55;
+    this.clickGain = null;
   }
 
   load(parsed, { bpm = 100 } = {}) {
@@ -593,7 +598,16 @@ export class TabPlayer {
     this.position = 0;
   }
 
-  async play({ from = this.position, onLine = null, onEvent = null, onEnd = null, onState = null, loop = false, click = this.click } = {}) {
+  async play({
+    from = this.position,
+    onLine = null,
+    onEvent = null,
+    onEnd = null,
+    onState = null,
+    loop = false,
+    click = this.click,
+    clickVolume = this.clickVolume,
+  } = {}) {
     if (!this.parsed || !this.parsed.events.length) return false;
     this.stopTimers();
     const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -606,6 +620,10 @@ export class TabPlayer {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.5;
     this.master.connect(this.ctx.destination);
+    this.clickVolume = Math.max(0, Math.min(1, Number(clickVolume) || 0));
+    this.clickGain = this.ctx.createGain();
+    this.clickGain.gain.value = this.clickVolume;
+    this.clickGain.connect(this.master);
     this.buffers.clear();
 
     this.onLine = onLine;
@@ -812,6 +830,15 @@ export class TabPlayer {
     }
   }
 
+  // The per-beat click runs through clickGain, so changing the volume applies
+  // to already-scheduled beats without restarting the player.
+  setClickVolume(value) {
+    this.clickVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (this.clickGain && this.ctx) {
+      this.clickGain.gain.setTargetAtTime(this.clickVolume, this.ctx.currentTime, 0.01);
+    }
+  }
+
   scheduleClick(when, accent = false) {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -820,9 +847,9 @@ export class TabPlayer {
     osc.type = "square";
     osc.frequency.value = accent ? 1600 : 1000;
     gain.gain.setValueAtTime(0.0001, when);
-    gain.gain.exponentialRampToValueAtTime(accent ? 0.14 : 0.07, when + 0.002);
+    gain.gain.exponentialRampToValueAtTime(accent ? 0.3 : 0.15, when + 0.002);
     gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
-    osc.connect(gain).connect(this.master);
+    osc.connect(gain).connect(this.clickGain || this.master);
     osc.start(when);
     osc.stop(when + 0.05);
   }
@@ -840,6 +867,7 @@ export class TabPlayer {
           onState: this.onState,
           loop: true,
           click: this.click,
+          clickVolume: this.clickVolume,
         });
         restart();
         return;
@@ -878,6 +906,7 @@ export class TabPlayer {
       onState: this.onState,
       loop: options.loop ?? this.loop,
       click: options.click ?? this.click,
+      clickVolume: options.clickVolume ?? this.clickVolume,
     });
   }
 
@@ -894,6 +923,7 @@ export class TabPlayer {
     if (this.ctx) this.ctx.close().catch(() => {});
     this.ctx = null;
     this.master = null;
+    this.clickGain = null;
     this.buffers.clear();
     this.thumpBuffer = null;
   }
