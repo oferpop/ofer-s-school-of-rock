@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112ap";
+import { songs, byId, versionsOf } from "./data.js?v=20261112au";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112ap";
+} from "./chords.js?v=20261112au";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112ap";
+} from "./pro.js?v=20261112au";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112ap";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ap";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ap";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ap";
-import { renderStaff } from "./staff.js?v=20261112ap";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ap";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ap";
+} from "./auth.js?v=20261112au";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112au";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112au";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112au";
+import { renderStaff } from "./staff.js?v=20261112au";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112au";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112au";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -61,6 +61,21 @@ function loadCapos() {
 
 function persistCapos(map) {
   localStorage.setItem(CAPOS_KEY, JSON.stringify(map));
+}
+
+const ENTRIES_KEY = "osr.entries.v1";
+
+function loadEntries() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(ENTRIES_KEY) || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistEntries(map) {
+  localStorage.setItem(ENTRIES_KEY, JSON.stringify(map));
 }
 
 function loadInstrumentVolume() {
@@ -96,6 +111,7 @@ const state = {
   ratings: loadRatings(),
   tempos: loadTempos(),
   capos: loadCapos(),
+  entries: loadEntries(),
   picker: "",
   backupNote: "",
   display: localStorage.getItem("osr.display") || "tab",
@@ -1098,6 +1114,22 @@ function songView(id) {
 
         ${videoPanel(song)}
 
+        <div class="timeline-card">
+          <div class="timeline-head">
+            <span class="timeline-title">Timeline</span>
+            <span class="dim" id="timeline-info"></span>
+            <button class="pill sq" id="timeline-add-entry" title="Mark an entry at the player position">+ Entry</button>
+          </div>
+          <div class="timeline" id="timeline" role="slider" aria-label="Song timeline"
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
+            <div class="timeline-ticks" id="timeline-ticks"></div>
+            <span class="timeline-loop" id="timeline-loop" hidden></span>
+            <span class="timeline-pulse" id="timeline-pulse" aria-hidden="true"></span>
+            <span class="timeline-playhead" id="timeline-playhead" aria-hidden="true"></span>
+          </div>
+          <p class="timeline-hint dim">Click to play from a point · drag to loop · Alt-click to mark an entry</p>
+        </div>
+
         <div class="sheet-wrap${score ? " score-only" : ""}">
           ${renderSheet(song, 0, capo)}
           ${score ? "" : chordPanel(song, capo)}
@@ -1464,6 +1496,9 @@ function updatePlayerBar() {
   const bar = document.getElementById("player-bar");
   if (!bar) return;
 
+  const livePosition = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+  paintTimeline(livePosition);
+
   const toggle = document.getElementById("player-toggle");
   if (toggle) {
     const playing = playerState.status === "playing";
@@ -1757,6 +1792,8 @@ function paintPlayheadAtTime(seconds) {
 }
 
 function clearPlayhead() {
+  paintTimeline(0);
+  document.getElementById("timeline-pulse")?.classList.remove("is-hit");
   document.querySelectorAll(".score-note.is-active").forEach((note) => note.classList.remove("is-active"));
   document.querySelectorAll(".tab-playhead").forEach((marker) => {
     marker.hidden = true;
@@ -1920,6 +1957,124 @@ function markLoopPoint(song, which) {
 }
 
 // Highlight the selected loop on the progress bar and across the tab rows.
+function buildTimeline(song, parsed = ensureParsed(song)) {
+  const box = document.getElementById("timeline");
+  const ticks = document.getElementById("timeline-ticks");
+  if (!box || !ticks) return;
+  const bpm = Math.max(20, playerState.bpm || 100);
+  const beats = Math.max(1, Number(parsed?.beats) || 4);
+  const beatType = Math.max(1, Number(parsed?.beatType) || 4);
+  const duration = Math.max(0.01, parsed?.duration || 0);
+  const barSeconds = (60 / bpm) * beats;
+  const barCount = Math.max(1, Math.ceil(duration / barSeconds));
+  const showBeats = barCount <= 64;
+  const labelEvery = Math.max(1, Math.ceil(barCount / 8));
+  let html = "";
+  for (let bar = 0; bar < barCount; bar++) {
+    const left = (bar / barCount) * 100;
+    html += `<span class="timeline-tick bar" style="left:${left}%"></span>`;
+    if (bar % labelEvery === 0) {
+      html += `<span class="timeline-bar-label" style="left:${left}%">${bar + 1}</span>`;
+    }
+    if (showBeats) {
+      for (let beat = 1; beat < beats; beat++) {
+        const beatLeft = ((bar + beat / beats) / barCount) * 100;
+        html += `<span class="timeline-tick beat" style="left:${beatLeft}%"></span>`;
+      }
+    }
+  }
+  const fractionOf = (entry) =>
+    Number.isFinite(entry.at) ? entry.at : Math.max(0, Math.min(1, (Number(entry.time) || 0) / duration));
+  const entries = [...(state.entries[song.id] || [])].sort((a, b) => fractionOf(a) - fractionOf(b));
+  entries.forEach((entry, index) => {
+    const fraction = fractionOf(entry);
+    const left = Math.max(0, Math.min(100, fraction * 100));
+    html += `<span class="timeline-entry" role="button" tabindex="0" data-index="${index}" data-time="${
+      fraction * duration
+    }" style="left:${left}%" title="Entry ${entry.label || index + 1} — click to play, Alt-click to remove">${
+      entry.label || index + 1
+    }</span>`;
+  });
+  ticks.innerHTML = html;
+  const info = document.getElementById("timeline-info");
+  if (info) info.textContent = `${barCount} bar${barCount === 1 ? "" : "s"} · ${beats}/${beatType} · ${bpm} BPM`;
+  paintTimeline(playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position);
+}
+
+function paintTimeline(seconds) {
+  const box = document.getElementById("timeline");
+  if (!box) return;
+  const duration = Math.max(0.01, playerState.parsed?.duration || 0);
+  const position = Math.max(0, Math.min(duration, Number(seconds) || 0));
+  const percent = (position / duration) * 100;
+  const head = document.getElementById("timeline-playhead");
+  if (head) head.style.left = `${percent}%`;
+  box.setAttribute("aria-valuenow", String(Math.round(percent)));
+
+  const loop = document.getElementById("timeline-loop");
+  if (loop) {
+    const active = playerState.loop && playerState.loopEnd > playerState.loopStart + 0.05;
+    loop.hidden = !active;
+    if (active) {
+      loop.style.left = `${(playerState.loopStart / duration) * 100}%`;
+      loop.style.width = `${((playerState.loopEnd - playerState.loopStart) / duration) * 100}%`;
+    }
+  }
+
+  const pulse = document.getElementById("timeline-pulse");
+  if (pulse) {
+    pulse.style.left = `${percent}%`;
+    const bpm = Math.max(20, playerState.bpm || 100);
+    const beat = 60 / bpm;
+    const beatIndex = Math.floor(position / beat);
+    if (playerState.status === "playing" && box.dataset.beat !== String(beatIndex)) {
+      box.dataset.beat = String(beatIndex);
+      pulse.classList.remove("is-hit");
+      void pulse.offsetWidth;
+      pulse.classList.add("is-hit");
+    }
+  }
+}
+
+function timeAtTimelinePoint(song, event) {
+  const box = document.getElementById("timeline");
+  if (!box) return null;
+  const rect = box.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left) / Math.max(1, rect.width)));
+  return ratio * ensureParsed(song).duration;
+}
+
+function addTimelineEntry(song, time) {
+  if (!Number.isFinite(time)) return;
+  const duration = Math.max(0.01, ensureParsed(song).duration);
+  const at = Math.max(0, Math.min(1, time / duration));
+  const list = [...(state.entries[song.id] || [])];
+  const fractionOf = (entry) =>
+    Number.isFinite(entry.at) ? entry.at : Math.max(0, Math.min(1, (Number(entry.time) || 0) / duration));
+  if (list.some((entry) => Math.abs(fractionOf(entry) - at) < 0.005)) return;
+  const label = list.reduce((max, entry) => Math.max(max, Number(entry.label) || 0), 0) + 1;
+  list.push({ at, label });
+  list.sort((a, b) => fractionOf(a) - fractionOf(b));
+  state.entries = { ...state.entries, [song.id]: list };
+  persistEntries(state.entries);
+  buildTimeline(song);
+}
+
+function removeTimelineEntry(song, index) {
+  const list = [...(state.entries[song.id] || [])];
+  if (!Number.isInteger(index) || index < 0 || index >= list.length) return;
+  list.splice(index, 1);
+  if (list.length) {
+    state.entries = { ...state.entries, [song.id]: list };
+  } else {
+    const next = { ...state.entries };
+    delete next[song.id];
+    state.entries = next;
+  }
+  persistEntries(state.entries);
+  buildTimeline(song);
+}
+
 function drawScoreLoop() {
   const svg = document.querySelector(".score-sheet .score-svg");
   const layer = svg?.querySelector(".score-loop-layer");
@@ -1996,6 +2151,7 @@ function drawLoopRange() {
   }
 
   drawScoreLoop();
+  paintTimeline(playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position);
 }
 
 async function startPlayer(song, { from = 0, fraction = null } = {}) {
@@ -2014,6 +2170,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
   }
   playerState.parsed = parsed;
   playerState.blocks = blockOffsets(parsed);
+  buildTimeline(song, parsed);
   if (fraction !== null) from = Math.min(parsed.duration * fraction, parsed.duration - 0.05);
 
   if (playerState.countIn && from <= 0.001) {
@@ -2097,6 +2254,8 @@ function changeBpm(delta, song) {
 function wirePlayer(song) {
   const toggle = document.getElementById("player-toggle");
   if (!toggle) return;
+  const initialParsed = ensureParsed(song);
+  buildTimeline(song, initialParsed);
 
   toggle.addEventListener("click", () => togglePlayer(song));
   document.getElementById("player-stop").addEventListener("click", () => stopPlayer());
@@ -2282,6 +2441,114 @@ function wirePlayer(song) {
     content.addEventListener("pointercancel", () => {
       drag = null;
       content.classList.remove("is-dragging");
+    });
+  }
+
+  const timeline = document.getElementById("timeline");
+  if (timeline) {
+    let timelineDrag = null;
+
+    timeline.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const marker = event.target.closest(".timeline-entry");
+      if (event.altKey || event.shiftKey) {
+        if (marker) removeTimelineEntry(song, Number(marker.dataset.index));
+        else {
+          const time = timeAtTimelinePoint(song, event);
+          if (time !== null) addTimelineEntry(song, time);
+        }
+        event.preventDefault();
+        return;
+      }
+      if (marker) {
+        const time = Number(marker.dataset.time);
+        if (Number.isFinite(time)) {
+          if (playerState.loop && (time < playerState.loopStart || time > playerState.loopEnd)) {
+            playerState.loop = false;
+            applyLoop(song);
+          }
+          seekPlayer(song, time);
+        }
+        event.preventDefault();
+        return;
+      }
+      const time = timeAtTimelinePoint(song, event);
+      if (time === null) return;
+      timelineDrag = { start: time, x: event.clientX, moved: false, pointerId: event.pointerId };
+      try {
+        timeline.setPointerCapture(event.pointerId);
+      } catch {
+        /* capture is optional */
+      }
+    });
+
+    timeline.addEventListener("pointermove", (event) => {
+      if (!timelineDrag) return;
+      if (event.pointerType === "touch") {
+        if (Math.hypot(event.clientX - timelineDrag.x, 0) > 8) {
+          timelineDrag = null;
+          timeline.classList.remove("is-dragging");
+        }
+        return;
+      }
+      if (!timelineDrag.moved && Math.abs(event.clientX - timelineDrag.x) < 5) return;
+      timelineDrag.moved = true;
+      const time = timeAtTimelinePoint(song, event);
+      if (time === null) return;
+      playerState.loopStart = Math.min(timelineDrag.start, time);
+      playerState.loopEnd = Math.max(timelineDrag.start, time);
+      playerState.loop = true;
+      applyLoop(song);
+      drawLoopRange();
+      event.preventDefault();
+    });
+
+    const endTimelineDrag = (event) => {
+      if (!timelineDrag) return;
+      const { start, moved, pointerId } = timelineDrag;
+      timelineDrag = null;
+      timeline.classList.remove("is-dragging");
+      try {
+        timeline.releasePointerCapture(pointerId);
+      } catch {
+        /* capture may already be gone */
+      }
+      if (moved) {
+        if (playerState.loopEnd - playerState.loopStart < 0.2) {
+          playerState.loop = false;
+          applyLoop(song);
+          seekPlayer(song, start);
+        } else {
+          seekPlayer(song, playerState.loopStart);
+        }
+      } else {
+        if (playerState.loop && (start < playerState.loopStart || start > playerState.loopEnd)) {
+          playerState.loop = false;
+          applyLoop(song);
+        }
+        seekPlayer(song, start);
+      }
+      event.preventDefault();
+    };
+    timeline.addEventListener("pointerup", endTimelineDrag);
+    timeline.addEventListener("pointercancel", () => {
+      timelineDrag = null;
+      timeline.classList.remove("is-dragging");
+    });
+    timeline.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const duration = ensureParsed(song).duration;
+      const position = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+      seekPlayer(song, Math.max(0, Math.min(duration - 0.05, position + (event.key === "ArrowRight" ? 1 : -1))));
+    });
+  }
+
+  const addEntryButton = document.getElementById("timeline-add-entry");
+  if (addEntryButton) {
+    addEntryButton.addEventListener("click", () => {
+      const time = playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position;
+      addTimelineEntry(song, time);
     });
   }
 
@@ -2553,12 +2820,14 @@ function clearLocalState() {
   state.videos = {};
   state.ratings = {};
   state.tempos = {};
+  state.entries = {};
   localStorage.removeItem(SAVED_KEY);
   localStorage.removeItem(IMPORTED_KEY);
   localStorage.removeItem("osr.playlists.v1");
   localStorage.removeItem("osr.videos.v1");
   localStorage.removeItem("osr.ratings.v1");
   localStorage.removeItem("osr.tempos.v1");
+  localStorage.removeItem("osr.entries.v1");
   persistPractice({});
   applyingRemote = false;
 }
@@ -3318,6 +3587,7 @@ function wire() {
       const metroValue = document.getElementById("bpm-value");
       if (metroValue) metroValue.textContent = String(bpm);
       if (playerState.status !== "stopped") stopPlayer();
+      buildTimeline(song);
       updatePlayerBar();
       tempoInput.value = String(bpm);
     });

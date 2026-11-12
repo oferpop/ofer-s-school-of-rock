@@ -92,6 +92,12 @@ The app also runs on any static host with **guest mode only**: without
 - **Playhead** — a vertical marker follows the exact column being played, with a
   progress bar in the transport; click any point in the tab (or the bar) and
   playback jumps there and continues
+- **Timeline ruler** — every song has a bar/beat ruler above the sheet. It
+  follows the playhead, flashes on each beat in sync with the Click track,
+  shows bar numbers and the time signature, and marks the A–B range. Click it
+  to play from a point, drag it to set a loop, and Alt-click to drop a numbered
+  **entry** marker (`+ Entry` adds one at the player position); entries are
+  clickable jump points and persist in this browser
 - **Click anywhere** — click a note, a line, an empty part of the sheet or the
   score and the player seeks there and starts playing. Clicking outside an
   active loop clears the loop so the click lands exactly where you asked
