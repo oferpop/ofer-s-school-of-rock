@@ -118,9 +118,13 @@ The app also runs on any static host with **guest mode only**: without
   prior (no double/half-time errors on steady material). When the chord changes
   are regular, the fitted change period corrects the octave and decides how many
   chords belong in a bar (1–4), so bar-delimited charts keep half-bar changes
-- Charts open in the reader as a `chords` song with the detected key and tempo;
-  the player spreads each bar's chords evenly across its four beats. Analysis
-  shows a spinner, a percentage bar and elapsed time
+- The **Solo → tab** mode follows one pitch at a time (YIN over short frames),
+  groups notes by attack, quantises them to a 16th grid and writes ASCII tab;
+  melodies, riffs and lead lines work, full mixes do not
+- Results open in the reader as a `chords` song with the detected key and tempo
+  (the player spreads each bar's chords evenly across its four beats) or as a
+  `tabs` song for a solo. Analysis shows a spinner, a percentage bar and
+  elapsed time
 - Everything runs in the browser: nothing is uploaded, and the app never
   downloads audio from YouTube or Spotify
 

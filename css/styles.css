@@ -2122,6 +2122,16 @@ input {
   display: none;
 }
 
+.tr-modes {
+  display: flex;
+  gap: 8px;
+}
+
+.tr-modes .pill.is-on {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
 .tr-facts {
   display: flex;
   gap: 18px;
