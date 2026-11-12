@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112bb";
+import { songs, byId, versionsOf } from "./data.js?v=20261112bh";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112bb";
+} from "./chords.js?v=20261112bh";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112bb";
+} from "./pro.js?v=20261112bh";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112bb";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112bb";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112bb";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112bb";
-import { renderStaff } from "./staff.js?v=20261112bb";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112bb";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112bb";
+} from "./auth.js?v=20261112bh";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112bh";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112bh";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112bh";
+import { renderStaff } from "./staff.js?v=20261112bh";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112bh";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112bh";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -2644,7 +2644,8 @@ function transcribeView() {
       <section class="hero">
         <p class="crumb">Tool</p>
         <h1>From audio to chords or tab</h1>
-        <p class="hero-sub">Load a recording you own. <strong>Chords</strong> folds the spectrum into 12 pitch classes, scores them against major, minor, 7th, m7, sus4 and dim shapes, estimates the tempo and writes a chord chart. <strong>Solo</strong> follows one pitch at a time and writes a tab, best for melodies and lead lines.</p>
+        <p class="hero-sub">Load a recording you own. <strong>Chords</strong> builds a bass-aware chroma, detects the key, scores chord shapes and smooths the sequence into a chart. It is a <strong>draft</strong>: clean single-instrument audio is best, and full mixes stay approximate. <strong>Solo</strong> follows one pitch at a time and writes a tab, best for melodies and lead lines.</p>
+        <p class="hero-sub dim">Correct chords in the text box, or edit Tempo and press Re-analyze, before opening the result in the reader.</p>
         <p class="hero-sub dim">Audio never leaves this browser: nothing is uploaded, and the app never downloads from YouTube or Spotify.</p>
       </section>
 
@@ -2668,9 +2669,11 @@ function transcribeView() {
           <span id="tr-fact-bars">Bars <strong id="tr-bars">–</strong></span>
         </div>
         <textarea id="tr-output" rows="12" spellcheck="false" placeholder="The result appears here…"></textarea>
+        <p class="hint dim">The result is editable — correct any chord, then open it in the reader.</p>
         <div class="tr-row">
           <button class="pill primary" id="tr-open">Open in reader</button>
           <button class="pill" id="tr-copy">Copy</button>
+          <button class="pill" id="tr-rerun" hidden>Re-analyze with this tempo</button>
         </div>
       </div>
     </main>`;
@@ -2717,11 +2720,14 @@ function wireTranscribe() {
     status.textContent = `${verb}… ${percent}% · ${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
   };
 
+  const rerun = document.getElementById("tr-rerun");
+
   const analyse = async (blob, label) => {
     source = blob;
     currentName = label;
     result = null;
     if (facts) facts.hidden = true;
+    if (rerun) rerun.hidden = true;
     setBusy(true);
     status.textContent = `Decoding ${label}…`;
     const startedAt = performance.now();
@@ -2736,9 +2742,15 @@ function wireTranscribe() {
       await new Promise((resolve) => setTimeout(resolve, 20));
       const tempo = estimateTempo(samples, buffer.sampleRate);
       let detectedBpm = bpmValue();
-      if (tempo.bpm >= 40 && tempo.confidence > 0.2) {
-        detectedBpm = tempo.bpm;
-        document.getElementById("tr-bpm").value = String(detectedBpm);
+      let tempoNote = "";
+      if (tempo.bpm >= 40) {
+        if (tempo.confidence > 0.5) {
+          detectedBpm = tempo.bpm;
+          document.getElementById("tr-bpm").value = String(detectedBpm);
+          tempoNote = ` · tempo ${detectedBpm} BPM`;
+        } else {
+          tempoNote = ` · detected ~${tempo.bpm} BPM (low confidence — edit Tempo and re-analyze)`;
+        }
       }
 
       if (mode === "chords") {
@@ -2760,7 +2772,8 @@ function wireTranscribe() {
 
         const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
         const chordCount = new Set(found.bars).size;
-        status.textContent = `${barCount} bars · ${chordCount} chords · key ${root} · ${shownBpm} BPM · ${seconds}s`;
+        status.textContent = `${barCount} bars · ${chordCount} chords · key ${root} · ${shownBpm} BPM · ${seconds}s${tempoNote}`;
+        if (rerun) rerun.hidden = false;
       } else {
         const notes = await detectNotesAsync(samples, buffer.sampleRate, {}, progressReporter(startedAt, "Reading notes"));
         result = { notes, bpm: detectedBpm };
@@ -2772,7 +2785,8 @@ function wireTranscribe() {
         if (tempoOut) tempoOut.textContent = `${detectedBpm} BPM`;
 
         const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
-        status.textContent = `${notes.length} notes · tempo ${detectedBpm} BPM · ${seconds}s`;
+        status.textContent = `${notes.length} notes · tempo ${detectedBpm} BPM · ${seconds}s${tempoNote}`;
+        if (rerun) rerun.hidden = false;
       }
       ctx.close().catch(() => {});
     } catch (error) {
@@ -2799,6 +2813,10 @@ function wireTranscribe() {
     const chosen = file.files && file.files[0];
     if (chosen) analyse(chosen, chosen.name);
     file.value = "";
+  });
+
+  rerun?.addEventListener("click", () => {
+    if (source) analyse(source, currentName);
   });
 
   document.getElementById("tr-open").addEventListener("click", () => {

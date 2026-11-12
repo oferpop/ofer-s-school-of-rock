@@ -2,8 +2,8 @@
 // No model download, no network: the same YIN detector as the tuner runs over
 // short frames, notes are grouped, quantised to a grid and mapped to strings.
 
-import { detectPitch, noteFromFrequency } from "./tuner.js?v=20261112bb";
-import { tuningToMidi } from "./player.js?v=20261112bb";
+import { detectPitch, noteFromFrequency } from "./tuner.js?v=20261112bh";
+import { tuningToMidi } from "./player.js?v=20261112bh";
 
 const STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 const MAX_FRET = 17;
@@ -246,13 +246,39 @@ const CHORD_SHAPES = [
   { suffix: "m", intervals: [0, 3, 7] },
   { suffix: "7", intervals: [0, 4, 7, 10] },
   { suffix: "m7", intervals: [0, 3, 7, 10] },
+  { suffix: "maj7", intervals: [0, 4, 7, 11] },
   { suffix: "sus4", intervals: [0, 5, 7] },
   { suffix: "dim", intervals: [0, 3, 6] },
+  { suffix: "aug", intervals: [0, 4, 8] },
 ];
+
+// Krumhansl-Schmuckler key profiles. A key estimate stops chords that are
+// wildly out of key and keeps the chart musically plausible.
+const KEY_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const KEY_MINOR = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const DIATONIC_MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const DIATONIC_MINOR = [0, 2, 3, 5, 7, 8, 10];
+
+const CANDIDATES = [];
+for (let root = 0; root < 12; root++) {
+  for (const shape of CHORD_SHAPES) {
+    const pcs = shape.intervals.map((interval) => (root + interval) % 12);
+    CANDIDATES.push({
+      root,
+      shape: shape.suffix,
+      pcs,
+      pcSet: new Set(pcs),
+      label: `${NOTE_NAMES[root]}${shape.suffix}`,
+    });
+  }
+}
+
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 export function chromaAt(samples, at, sampleRate, size = 4096) {
   const mags = spectrum(samples, at, size);
   const chroma = new Float64Array(12);
+  const bass = new Float64Array(12);
   let energy = 0;
   for (let bin = 1; bin < mags.length; bin++) {
     const freq = (bin * sampleRate) / size;
@@ -262,32 +288,58 @@ export function chromaAt(samples, at, sampleRate, size = 4096) {
     // Bass notes say more about the root than upper harmonics do.
     const weight = freq < 260 ? 1.6 : freq < 700 ? 1 : 0.6;
     chroma[pitchClass] += mags[bin] * weight;
+    if (freq <= 260) bass[pitchClass] += mags[bin];
     energy += mags[bin];
   }
   let norm = 0;
   for (let i = 0; i < 12; i++) norm += chroma[i] * chroma[i];
   norm = Math.sqrt(norm) || 1;
   for (let i = 0; i < 12; i++) chroma[i] /= norm;
-  return { time: at / sampleRate, chroma, energy };
+
+  let bassNorm = 0;
+  for (let i = 0; i < 12; i++) bassNorm += bass[i] * bass[i];
+  bassNorm = Math.sqrt(bassNorm) || 1;
+  for (let i = 0; i < 12; i++) bass[i] /= bassNorm;
+
+  return { time: at / sampleRate, chroma, bass, energy };
 }
 
-export function chromaFrames(samples, sampleRate, { frameSize = 4096, hop = 2048 } = {}) {
+// Low frequencies need a finer frequency grid than a 44.1/48 kHz frame can
+// give. Averaging down to ~11-12 kHz makes a semitone at 65 Hz wider than one
+// FFT bin, which stops bass notes leaking into neighbouring pitch classes.
+export function downsampleForChroma(samples, sampleRate, targetRate = 11025) {
+  if (sampleRate <= targetRate * 1.15) return { samples, sampleRate };
+  const factor = Math.max(1, Math.round(sampleRate / targetRate));
+  const length = Math.floor(samples.length / factor);
+  const output = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    let sum = 0;
+    const start = i * factor;
+    for (let j = 0; j < factor; j++) sum += samples[start + j];
+    output[i] = sum / factor;
+  }
+  return { samples: output, sampleRate: sampleRate / factor };
+}
+
+export function chromaFrames(samples, sampleRate, { frameSize = 4096, hop = 1024, targetRate = 11025 } = {}) {
+  const down = downsampleForChroma(samples, sampleRate, targetRate);
   const frames = [];
-  for (let at = 0; at + frameSize <= samples.length; at += hop) {
-    frames.push(chromaAt(samples, at, sampleRate, frameSize));
+  for (let at = 0; at + frameSize <= down.samples.length; at += hop) {
+    frames.push(chromaAt(down.samples, at, down.sampleRate, frameSize));
   }
   return frames;
 }
 
 // Same analysis, but yields to the page and reports progress so a whole song
 // does not freeze the tab.
-export async function estimateChordsAsync(samples, sampleRate, { bpm = 100, frameSize = 4096, hop = 2048 } = {}, onProgress) {
+export async function estimateChordsAsync(samples, sampleRate, { bpm = 100, frameSize = 4096, hop = 1024 } = {}, onProgress) {
+  const down = downsampleForChroma(samples, sampleRate);
   const frames = [];
-  const total = Math.max(1, Math.floor((samples.length - frameSize) / hop));
+  const total = Math.max(1, Math.floor((down.samples.length - frameSize) / hop));
   const yieldEvery = Math.max(1, Math.floor(total / 40));
   let count = 0;
-  for (let at = 0; at + frameSize <= samples.length; at += hop) {
-    frames.push(chromaAt(samples, at, sampleRate, frameSize));
+  for (let at = 0; at + frameSize <= down.samples.length; at += hop) {
+    frames.push(chromaAt(down.samples, at, down.sampleRate, frameSize));
     count += 1;
     if (count % yieldEvery === 0) {
       onProgress?.(count / total);
@@ -295,31 +347,200 @@ export async function estimateChordsAsync(samples, sampleRate, { bpm = 100, fram
     }
   }
   onProgress?.(1);
-  return chordsFromFrames(frames, sampleRate, bpm);
+  return chordsFromFrames(frames, down.sampleRate, bpm);
 }
 
-function bestChord(chroma) {
-  let best = null;
-  for (let root = 0; root < 12; root++) {
-    for (const shape of CHORD_SHAPES) {
-      const inChord = new Set();
-      let sum = 0;
-      for (const interval of shape.intervals) {
-        const pc = (root + interval) % 12;
-        inChord.add(pc);
-        sum += chroma[pc];
+function detectKey(frames) {
+  const sum = new Float64Array(12);
+  for (const frame of frames) {
+    // Loud frames carry more harmony than silence/noise.
+    const weight = frame.energy || 0;
+    for (let i = 0; i < 12; i++) sum[i] += frame.chroma[i] * weight;
+  }
+  let best = { root: 0, mode: "major", score: -Infinity };
+  for (const mode of ["major", "minor"]) {
+    const profile = mode === "major" ? KEY_MAJOR : KEY_MINOR;
+    for (let root = 0; root < 12; root++) {
+      let dot = 0;
+      let norm = 0;
+      for (let i = 0; i < 12; i++) {
+        const value = profile[(i - root + 12) % 12];
+        dot += sum[i] * value;
+        norm += value * value;
       }
-      // Dividing by the number of chord tones is what keeps a plain triad from
-      // losing to its own seventh: an absent 7th adds nothing, so it dilutes
-      // the average instead of winning.
-      let score = sum / shape.intervals.length;
-      for (let pc = 0; pc < 12; pc++) if (!inChord.has(pc)) score -= chroma[pc] * 0.18;
-      // Prefer the root in the bass.
-      score += chroma[root] * 0.2;
-      if (!best || score > best.score) best = { score, root, shape: shape.suffix };
+      const score = dot / Math.sqrt(norm || 1);
+      if (score > best.score) best = { root, mode, score };
     }
   }
-  return { label: `${NOTE_NAMES[best.root]}${best.shape}`, score: best.score };
+  return { ...best, label: `${NOTE_NAMES[best.root]}${best.mode === "minor" ? "m" : ""}` };
+}
+
+function keyDiatonic(key) {
+  const scale = key.mode === "major" ? DIATONIC_MAJOR : DIATONIC_MINOR;
+  const set = new Set(scale.map((step) => (step + key.root) % 12));
+  if (key.mode === "minor") set.add((key.root + 11) % 12); // harmonic minor leading tone
+  return set;
+}
+
+function scoreCandidates(frame, diatonic) {
+  const chroma = frame.chroma;
+  const bass = frame.bass || chroma;
+  const scores = new Float32Array(CANDIDATES.length);
+  for (let index = 0; index < CANDIDATES.length; index++) {
+    const candidate = CANDIDATES[index];
+    let tone = 0;
+    for (const pc of candidate.pcs) tone += chroma[pc];
+    tone /= candidate.pcs.length;
+
+    let outside = 0;
+    let outsideCount = 0;
+    for (let pc = 0; pc < 12; pc++) {
+      if (!candidate.pcSet.has(pc)) {
+        outside += chroma[pc];
+        outsideCount += 1;
+      }
+    }
+    outside /= outsideCount || 1;
+
+    const diatonicChord = candidate.pcs.every((pc) => diatonic.has(pc));
+    let score = tone - 0.3 * outside + 0.4 * bass[candidate.root];
+    score += diatonicChord ? 0.02 : -0.035;
+    // Rootless diminished/augmented shapes are easy to hallucinate from a
+    // dominant seventh; require a little more evidence for them.
+    if (candidate.shape === "dim" || candidate.shape === "aug") score -= 0.1;
+    // Triads win ties; a seventh has to be clearly present to be chosen.
+    if (candidate.pcs.length === 4 && chroma[candidate.pcs[3]] > tone * 0.55) score += 0.03;
+    score -= 0.012 * (candidate.pcs.length - 3);
+    scores[index] = score;
+  }
+  return scores;
+}
+
+function transitionTable() {
+  const size = CANDIDATES.length;
+  const table = new Float32Array(size * size);
+  for (let i = 0; i < size; i++) {
+    const left = CANDIDATES[i];
+    for (let j = 0; j < size; j++) {
+      if (i === j) continue;
+      const right = CANDIDATES[j];
+      let shared = 0;
+      for (const pc of right.pcs) if (left.pcSet.has(pc)) shared += 1;
+      // Changing harmony costs a little; unrelated jumps cost more. This
+      // removes one-frame flips without freezing a real chord change.
+      table[i * size + j] = shared >= 2 ? -0.018 : shared >= 1 ? -0.04 : -0.085;
+    }
+  }
+  return table;
+}
+
+const TRANSITIONS = transitionTable();
+
+function mergeShortSegments(input, minDuration = 0.24) {
+  let list = input.map((segment) => ({ ...segment }));
+  for (let pass = 0; pass < 8; pass++) {
+    let changed = false;
+    const out = [];
+    for (let i = 0; i < list.length; i++) {
+      const segment = list[i];
+      if (segment.end - segment.start >= minDuration || list.length < 2) {
+        out.push(segment);
+        continue;
+      }
+      const previous = out[out.length - 1];
+      const next = list[i + 1];
+      if (previous && next && previous.label === next.label) {
+        previous.end = next.end;
+        i += 1;
+        changed = true;
+        continue;
+      }
+      const target =
+        previous && (!next || previous.end - previous.start >= next.end - next.start) ? previous : next;
+      if (!target) {
+        out.push(segment);
+        continue;
+      }
+      target.start = Math.min(target.start, segment.start);
+      target.end = Math.max(target.end, segment.end);
+      changed = true;
+    }
+    list = out;
+    if (!changed) break;
+  }
+
+  const merged = [];
+  for (const segment of list) {
+    const last = merged[merged.length - 1];
+    if (last && last.label === segment.label) last.end = segment.end;
+    else merged.push(segment);
+  }
+  return merged;
+}
+
+function decodeChords(frames, diatonic) {
+  let loudest = 0;
+  for (const frame of frames) loudest = Math.max(loudest, frame.energy);
+  const floor = Math.max(1e-9, loudest * 0.055);
+  const audible = frames.filter((frame) => frame.energy > floor);
+  if (audible.length < 2) return [];
+
+  // Decode at roughly 10 frames per second; a chord rarely changes faster.
+  const step = Math.max(2, Math.ceil(frames.length / 2400));
+  const decodedFrames = [];
+  for (let index = 0; index < audible.length; index += step) decodedFrames.push(audible[index]);
+  if (decodedFrames.length < 2) return [];
+
+  const count = CANDIDATES.length;
+  const emissions = decodedFrames.map((frame) => scoreCandidates(frame, diatonic));
+  const dp = new Float32Array(count);
+  const next = new Float32Array(count);
+  const back = new Int16Array(count * decodedFrames.length);
+  for (let i = 0; i < count; i++) dp[i] = emissions[0][i];
+
+  for (let t = 1; t < decodedFrames.length; t++) {
+    const previousOffset = (t - 1) * count;
+    const currentOffset = t * count;
+    for (let j = 0; j < count; j++) {
+      let best = -Infinity;
+      let bestIndex = 0;
+      for (let i = 0; i < count; i++) {
+        const value = dp[i] + TRANSITIONS[i * count + j];
+        if (value > best) {
+          best = value;
+          bestIndex = i;
+        }
+      }
+      next[j] = best + emissions[t][j];
+      back[currentOffset + j] = bestIndex;
+    }
+    dp.set(next);
+    void previousOffset;
+  }
+
+  let last = 0;
+  for (let i = 1; i < count; i++) if (dp[i] > dp[last]) last = i;
+  const path = new Int16Array(decodedFrames.length);
+  path[path.length - 1] = last;
+  for (let t = decodedFrames.length - 1; t > 0; t--) {
+    path[t - 1] = back[t * count + path[t]];
+  }
+
+  const frameStep = decodedFrames.length > 1 ? decodedFrames[1].time - decodedFrames[0].time : 0.1;
+  const segments = [];
+  let current = null;
+  for (let t = 0; t < decodedFrames.length; t++) {
+    const label = CANDIDATES[path[t]].label;
+    const start = decodedFrames[t].time;
+    const end = decodedFrames[t + 1]?.time ?? start + frameStep;
+    if (current && current.label === label) current.end = end;
+    else {
+      if (current) segments.push(current);
+      current = { label, start, end };
+    }
+  }
+  if (current) segments.push(current);
+  return mergeShortSegments(segments);
 }
 
 export function estimateChords(samples, sampleRate, { bpm = 100 } = {}) {
@@ -327,78 +548,28 @@ export function estimateChords(samples, sampleRate, { bpm = 100 } = {}) {
 }
 
 export function chordsFromFrames(frames, sampleRate, bpm = 100) {
-  if (frames.length < 4) return { segments: [], bars: [], bpm, key: "" };
+  if (frames.length < 4) return { segments: [], bars: [], bpm, key: "", cellsPerBar: 1 };
+  const safeBpm = Math.max(20, Math.min(240, Number(bpm) || 100));
+  const key = detectKey(frames);
+  const merged = decodeChords(frames, keyDiatonic(key));
+  if (!merged.length) return { segments: [], bars: [], bpm: safeBpm, key: key.label, cellsPerBar: 1 };
 
-  // Threshold on the loudest frame, not an absolute level, so quiet recordings
-  // are still read and silent gaps are labelled N.
-  let loudest = 0;
-  for (const frame of frames) loudest = Math.max(loudest, frame.energy);
-  const floor = Math.max(1e-9, loudest * 0.06);
-  const labels = frames.map((frame) => (frame.energy > floor ? bestChord(frame.chroma).label : "N"));
-
-  // Mode filter over five frames to stop single-frame flips.
-  const smoothed = labels.map((label, index) => {
-    const window = labels.slice(Math.max(0, index - 2), Math.min(labels.length, index + 3));
-    const counts = new Map();
-    for (const value of window) counts.set(value, (counts.get(value) || 0) + 1);
-    let best = label;
-    let bestCount = 0;
-    for (const [value, count] of counts) {
-      if (count > bestCount) {
-        best = value;
-        bestCount = count;
-      }
-    }
-    return best;
-  });
-
-  const frameSeconds = 2048 / sampleRate;
-  const segments = [];
-  for (let i = 0; i < smoothed.length; i++) {
-    const label = smoothed[i];
-    if (label === "N") continue;
-    const time = frames[i].time;
-    const last = segments[segments.length - 1];
-    if (last && last.label === label) {
-      last.end = time + frameSeconds;
-      continue;
-    }
-    if (last && time - last.end < frameSeconds * 1.5) {
-      // Continue the previous segment over a tiny gap.
-      if (last.label === label) {
-        last.end = time + frameSeconds;
-        continue;
-      }
-    }
-    segments.push({ label, start: time, end: time + frameSeconds });
-  }
-
-  // Fold very short segments into the neighbour they came from.
-  const merged = [];
-  for (const segment of segments) {
-    const previous = merged[merged.length - 1];
-    if (previous && segment.end - segment.start < 0.18) {
-      previous.end = segment.end;
-      continue;
-    }
-    merged.push(segment);
-  }
-
-  const tuned = refineTempo(merged, bpm);
-  const barSeconds = (60 / tuned.bpm) * 4;
-  const origin = merged.length ? merged[0].start : 0;
-  const lastTime = frames[frames.length - 1].time + frameSeconds - origin;
+  const barSeconds = (60 / safeBpm) * 4;
+  const origin = merged[0].start;
+  const lastTime = frames[frames.length - 1].time + 0.05 - origin;
   const barCount = Math.max(1, Math.ceil(lastTime / barSeconds));
 
-  // How many chords fit in a bar? The fitted chord-change period answers that,
-  // so a two-chords-per-bar song keeps both chords instead of losing one.
-  const cellsPerBar = tuned.period > 0
-    ? Math.min(4, Math.max(1, Math.round(barSeconds / tuned.period)))
+  const durations = merged
+    .map((segment) => segment.end - segment.start)
+    .filter((duration) => duration >= 0.35)
+    .sort((a, b) => a - b);
+  const period = durations.length ? durations[Math.floor(durations.length / 2)] : 0;
+  const cellsPerBar = period > 0
+    ? Math.min(4, Math.max(1, Math.round(barSeconds / period)))
     : 1;
   const cell = barSeconds / cellsPerBar;
   const cellCount = barCount * cellsPerBar;
 
-  // Vote per cell by how much of the cell each chord covers.
   const votes = Array.from({ length: cellCount }, () => new Map());
   for (const segment of merged) {
     const from = Math.max(0, Math.floor((segment.start - origin) / cell));
@@ -422,10 +593,8 @@ export function chordsFromFrames(frames, sampleRate, bpm = 100) {
     return top;
   });
 
-  // Drop cells past the last chord before carrying anything forward.
   while (progression.length > 1 && progression[progression.length - 1] === "N") progression.pop();
 
-  // Carry the last chord forward over gaps, and trim trailing empties.
   let running = "N";
   const filled = progression.map((label) => {
     if (label !== "N") running = label;
@@ -433,18 +602,7 @@ export function chordsFromFrames(frames, sampleRate, bpm = 100) {
   });
   while (filled.length > 1 && filled[filled.length - 1] === "N") filled.pop();
 
-  const counts = new Map();
-  for (const label of filled) if (label !== "N") counts.set(label, (counts.get(label) || 0) + 1);
-  let key = "";
-  let keyCount = 0;
-  for (const [label, count] of counts) {
-    if (count > keyCount) {
-      key = label;
-      keyCount = count;
-    }
-  }
-
-  return { segments: merged, bars: filled, bpm: tuned.bpm, key, cellsPerBar };
+  return { segments: merged, bars: filled, bpm: safeBpm, key: key.label, cellsPerBar };
 }
 
 export function chordsToChart(bars, { cellsPerBar = 1, barsPerLine = 4 } = {}) {
@@ -527,40 +685,6 @@ export function estimateTempo(samples, sampleRate, { minBpm = 30, maxBpm = 200 }
   while (bpm < 70) bpm *= 2;
   while (bpm > 180) bpm /= 2;
   return { bpm: Math.round(bpm), confidence: Math.min(1, best / (variance / frames)) };
-}
-
-// A chord chart only changes when the harmony changes, so a take with one
-// chord per bar also exposes the bar length. When those changes are regular,
-// prefer the octave of that rate closest to the onset estimate.
-function refineTempo(segments, onsetBpm) {
-  if (!onsetBpm || segments.length < 3) return { bpm: onsetBpm, period: 0 };
-  // Fit a line through the chord-change times: the slope is the average gap
-  // between changes, which is robust to one odd segment and precise enough to
-  // land on the real tempo instead of one BPM below it.
-  const count = segments.length;
-  const meanIndex = (count - 1) / 2;
-  const meanTime = segments.reduce((sum, segment) => sum + segment.start, 0) / count;
-  let covariance = 0;
-  let spread = 0;
-  for (let i = 0; i < count; i++) {
-    const di = i - meanIndex;
-    covariance += di * (segments[i].start - meanTime);
-    spread += di * di;
-  }
-  if (spread <= 0) return { bpm: onsetBpm, period: 0 };
-  const period = covariance / spread;
-  if (period < 0.4) return { bpm: onsetBpm, period: 0 };
-  const residual = segments.reduce((sum, segment, i) => sum + Math.abs(segment.start - (meanTime + period * (i - meanIndex))), 0) / count;
-  if (residual > period * 0.15) return { bpm: onsetBpm, period: 0 };
-
-  // Fold to the octave nearest the onset estimate, then keep that estimate
-  // when it agrees — it is usually the more precise of the two.
-  const barRate = 240 / period;
-  const octave = Math.round(Math.log2(onsetBpm / barRate));
-  const candidate = barRate * 2 ** octave;
-  if (candidate < 50 || candidate > 200) return { bpm: onsetBpm, period };
-  const keep = Math.abs(candidate - onsetBpm) / onsetBpm <= 0.08 ? onsetBpm : Math.round(candidate);
-  return { bpm: keep, period };
 }
 
 // Async version of detectNotes: yields to the page and reports progress.

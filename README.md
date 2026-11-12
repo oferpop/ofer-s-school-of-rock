@@ -138,11 +138,15 @@ The app also runs on any static host with **guest mode only**: without
   with the metronome, building a set list
 
 **Transcribe (`#/transcribe`)**
-- Load an audio file you own; the analyser folds each frame into 12 pitch
-  classes (bass-weighted), scores them against major, minor, 7th, m7, sus4 and
-  dim shapes, smooths the result and writes a chord chart. Dividing each
-  template score by its number of chord tones keeps plain triads from losing to
-  their own seventh
+- Load an audio file you own; the analyser averages the signal down to about
+  11–12 kHz so low bass notes get a usable frequency grid, builds a 12-bin
+  chroma with a separate bass profile, detects the key with Krumhansl profiles,
+  scores major/minor/7th/m7/maj7/sus4/dim/aug shapes and decodes the sequence
+  with a Viterbi smoother. Triads win ties; a seventh needs real energy
+- The chord chart is a **draft**, not a verified transcription: clean
+  single-instrument audio works best, full mixes remain approximate. Change
+  the Tempo field and press **Re-analyze** to rebuild the chart, or edit the
+  chart text directly before opening it in the reader
 - The tempo comes from onset-flux autocorrelation with a comb and a 110 BPM
   prior (no double/half-time errors on steady material). When the chord changes
   are regular, the fitted change period corrects the octave and decides how many
