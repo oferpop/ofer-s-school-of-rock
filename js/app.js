@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112al";
+import { songs, byId, versionsOf } from "./data.js?v=20261112am";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112al";
+} from "./chords.js?v=20261112am";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112al";
+} from "./pro.js?v=20261112am";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112al";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112al";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112al";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112al";
-import { renderStaff } from "./staff.js?v=20261112al";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112al";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112al";
+} from "./auth.js?v=20261112am";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112am";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112am";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112am";
+import { renderStaff } from "./staff.js?v=20261112am";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112am";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112am";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -916,16 +916,9 @@ function songView(id) {
   return `
     <main class="ws song-layout">
       <aside class="rail">
-        <div class="rail-auth">
-          ${
-            state.user
-              ? `<p class="rail-account-label">Signed in</p>
-                 <strong class="rail-account-name">${esc(state.user.name)}</strong>
-                 <p class="rail-account-email">${esc(state.user.email)}</p>
-                 <button class="btn-ghost" data-logout>Log out</button>`
-              : `<a class="btn-primary" href="#/signup">Sign up</a>
-                 <a class="btn-ghost" href="#/login">Log in</a>`
-          }
+        <div class="rail-player">
+          <h3 class="rail-title">Player</h3>
+          ${playerBar(song)}
         </div>
         ${
           versions.length
@@ -1086,8 +1079,6 @@ function songView(id) {
             ${Array.from({ length: metro.beats }, (_, i) => `<span class="dot" data-beat="${i}"></span>`).join("")}
           </div>
         </div>
-
-        ${playerBar(song)}
 
         ${videoPanel(song)}
 
