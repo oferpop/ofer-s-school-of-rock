@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112au";
+import { songs, byId, versionsOf } from "./data.js?v=20261112av";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112au";
+} from "./chords.js?v=20261112av";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112au";
+} from "./pro.js?v=20261112av";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112au";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112au";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112au";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112au";
-import { renderStaff } from "./staff.js?v=20261112au";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112au";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112au";
+} from "./auth.js?v=20261112av";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112av";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112av";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112av";
+import { renderStaff } from "./staff.js?v=20261112av";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112av";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112av";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -2474,7 +2474,13 @@ function wirePlayer(song) {
       }
       const time = timeAtTimelinePoint(song, event);
       if (time === null) return;
-      timelineDrag = { start: time, x: event.clientX, moved: false, pointerId: event.pointerId };
+      timelineDrag = {
+        start: time,
+        x: event.clientX,
+        y: event.clientY,
+        moved: false,
+        pointerId: event.pointerId,
+      };
       try {
         timeline.setPointerCapture(event.pointerId);
       } catch {
@@ -2485,7 +2491,7 @@ function wirePlayer(song) {
     timeline.addEventListener("pointermove", (event) => {
       if (!timelineDrag) return;
       if (event.pointerType === "touch") {
-        if (Math.hypot(event.clientX - timelineDrag.x, 0) > 8) {
+        if (Math.hypot(event.clientX - timelineDrag.x, event.clientY - timelineDrag.y) > 8) {
           timelineDrag = null;
           timeline.classList.remove("is-dragging");
         }
