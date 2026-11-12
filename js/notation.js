@@ -318,6 +318,74 @@ export function parseMusicXml(xmlText, fallbackTitle = "") {
   return notation;
 }
 
+// --- compressed MusicXML (.mxl) ----------------------------------------
+
+function readZipEntries(buffer) {
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("That .mxl file is not a valid ZIP archive.");
+  const count = view.getUint16(eocd + 10, true);
+  let offset = view.getUint32(eocd + 16, true);
+  const entries = new Map();
+  for (let index = 0; index < count; index++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) break;
+    const method = view.getUint16(offset + 10, true);
+    const compressedSize = view.getUint32(offset + 20, true);
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const localOffset = view.getUint32(offset + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
+    entries.set(name, { method, compressedSize, localOffset });
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return { bytes, view, entries };
+}
+
+async function zipEntryBuffer(zip, name) {
+  const entry = zip.entries.get(name);
+  if (!entry) throw new Error(`The .mxl archive is missing ${name}.`);
+  const { bytes, view } = zip;
+  if (view.getUint32(entry.localOffset, true) !== 0x04034b50) throw new Error("That .mxl archive is damaged.");
+  const nameLength = view.getUint16(entry.localOffset + 26, true);
+  const extraLength = view.getUint16(entry.localOffset + 28, true);
+  const start = entry.localOffset + 30 + nameLength + extraLength;
+  const data = bytes.subarray(start, start + entry.compressedSize);
+  if (entry.method === 0) return data;
+  if (entry.method !== 8) throw new Error("That .mxl file uses an unsupported compression method.");
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error("This browser cannot open compressed .mxl files. Export uncompressed MusicXML instead.");
+  }
+  const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export async function parseMxl(arrayBuffer, fallbackTitle = "") {
+  const zip = readZipEntries(arrayBuffer);
+  let scorePath = null;
+  if (zip.entries.has("META-INF/container.xml")) {
+    const container = new TextDecoder().decode(await zipEntryBuffer(zip, "META-INF/container.xml"));
+    const match = container.match(/full-path="([^"]+)"/i);
+    if (match) scorePath = match[1];
+  }
+  if (!scorePath) {
+    scorePath =
+      [...zip.entries.keys()].find(
+        (name) => !name.startsWith("META-INF/") && /\.(xml|musicxml)$/i.test(name),
+      ) || null;
+  }
+  if (!scorePath) throw new Error("That .mxl archive does not contain a MusicXML score.");
+  const text = new TextDecoder().decode(await zipEntryBuffer(zip, scorePath));
+  return parseMusicXml(text, fallbackTitle);
+}
+
 // --- MIDI ---------------------------------------------------------------
 
 function readVar(buffer, state) {

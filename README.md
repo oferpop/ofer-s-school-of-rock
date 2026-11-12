@@ -338,10 +338,11 @@ Breakpoints follow the real site: a 258px version rail above 1000px, a sticky
 chord panel beside the sheet on wide screens, and a stacked single-column reader
 below that.
 **Sheet music reader (`#/import` → Sheet music)**
-- Import **MusicXML** (`.musicxml` / `.xml`, part-wise) or **MIDI**
-  (`.mid` / `.midi`) and the score is drawn as a real staff: treble or bass
-  clef, grand staff for piano-style parts, key and time signatures, noteheads
-  with stems and flags, dotted notes, rests, accidentals and ledger lines
+- Import **MusicXML** (`.musicxml` / `.xml`, part-wise), compressed
+  **MusicXML** (`.mxl`, unzipped in the page) or **MIDI** (`.mid` / `.midi`)
+  and the score is drawn as a real staff: treble or bass clef, grand staff for
+  piano-style parts, key and time signatures, noteheads with stems and flags,
+  dotted notes, rests, accidentals and ledger lines
 - The player reuses the tab engine: count-in, tempo, A–B loop, speed and Follow
   all work. The current note/chord is highlighted and its system scrolls into
   view while the score plays
@@ -353,7 +354,9 @@ below that.
   `<forward>`, ties, tempo, key/time signatures and one or two staves
 - Scores open as `Score` songs: Save, playlists, comments, tempo and Print/PDF
   work; transpose/capo/tab-display controls are hidden because they do not apply
-- Not an OMR reader: images and PDFs are not transcribed. No lyrics, slurs,
+- Not an OMR reader: images and PDFs of printed staves are not transcribed.
+  Convert a PDF to MusicXML/MXL first (Audiveris, free, or export from the
+  notation app); loading a `.pdf` shows that instruction. No lyrics, slurs,
   beams or tuplet brackets are drawn yet
 
 

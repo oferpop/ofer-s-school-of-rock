@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112ac";
+import { songs, byId, versionsOf } from "./data.js?v=20261112ad";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112ac";
+} from "./chords.js?v=20261112ad";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112ac";
+} from "./pro.js?v=20261112ad";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112ac";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ac";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ac";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ac";
-import { renderStaff } from "./staff.js?v=20261112ac";
-import { parseMusicXml, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ac";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ac";
+} from "./auth.js?v=20261112ad";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ad";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ad";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ad";
+import { renderStaff } from "./staff.js?v=20261112ad";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ad";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ad";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -2654,10 +2654,11 @@ function importView() {
 
       <section class="score-import">
         <h2>Sheet music</h2>
-        <p class="dim">Import MusicXML (<code>.musicxml</code> / <code>.xml</code>) or MIDI (<code>.mid</code> / <code>.midi</code>). The score is drawn, played note by note and followed while it plays. Compressed <code>.mxl</code> is not supported — export uncompressed MusicXML. Images and PDFs are not transcribed.</p>
+        <p class="dim">Import MusicXML (<code>.musicxml</code> / <code>.xml</code>), compressed MusicXML (<code>.mxl</code>) or MIDI (<code>.mid</code> / <code>.midi</code>). The score is drawn, played note by note and followed while it plays.</p>
+        <p class="dim">PDFs of printed staves are <strong>not</strong> read directly — that needs optical music recognition. Convert the PDF to MusicXML with <a href="https://audiveris.github.io/audiveris/" target="_blank" rel="noopener noreferrer">Audiveris</a> (free) or export MusicXML from the notation app, then load the <code>.musicxml</code> / <code>.mxl</code> here.</p>
         <div class="tr-row">
           <label class="pill file-pill">Load score<input id="score-file" type="file"
-            accept=".xml,.musicxml,.mid,.midi,audio/midi,application/xml,text/xml" class="sr-only" /></label>
+            accept=".xml,.musicxml,.mxl,.mid,.midi,.pdf,audio/midi,application/xml,text/xml,application/pdf" class="sr-only" /></label>
           <span class="dim" id="score-status">No file loaded.</span>
         </div>
       </section>
@@ -3690,10 +3691,16 @@ function wireImport() {
         let notation;
         if (extension === "xml" || extension === "musicxml") {
           notation = parseMusicXml(await chosen.text(), name);
+        } else if (extension === "mxl") {
+          notation = await parseMxl(await chosen.arrayBuffer(), name);
         } else if (extension === "mid" || extension === "midi") {
           notation = parseMidi(await chosen.arrayBuffer(), name);
+        } else if (extension === "pdf") {
+          throw new Error(
+            "PDF staves need OMR. Convert the PDF to MusicXML/MXL with Audiveris or MuseScore, then load that file.",
+          );
         } else {
-          throw new Error("Use a .musicxml/.xml score or a .mid/.midi file.");
+          throw new Error("Use a .musicxml/.xml/.mxl score or a .mid/.midi file.");
         }
         const song = {
           id: `imported-${Date.now().toString(36)}`,
