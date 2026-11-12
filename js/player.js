@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112v";
+} from "./chords.js?v=20261112w";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -63,6 +63,15 @@ function isUgRow(line) {
   return text.length >= 6 && /[-|]/.test(text) && UG_ROW.test(text);
 }
 
+// Safety net for exports that put words inside the row (PM, (Em), tr~~~) or use
+// characters the strict matcher does not know. A real tab row has a bar line,
+// several dashes and at least one fret number.
+function looksLikeTabRow(line) {
+  const text = line.trim();
+  if (text.length < 6 || !text.includes("|") || !/\d/.test(text)) return false;
+  return (text.match(/-/g) || []).length >= 4;
+}
+
 /**
  * Last line of a tablature block starting at `start`, or -1.
  * Handles labelled blocks (`e|--0--`) and unlabelled Ultimate Guitar style
@@ -76,9 +85,9 @@ export function tabBlockEnd(lines, start) {
     return end > start ? end : -1;
   }
 
-  if (!isUgRow(first)) return -1;
+  if (!isUgRow(first) && !looksLikeTabRow(first)) return -1;
   let end = start;
-  while (end + 1 < lines.length && isUgRow(lines[end + 1])) end += 1;
+  while (end + 1 < lines.length && (isUgRow(lines[end + 1]) || looksLikeTabRow(lines[end + 1]))) end += 1;
   const rows = lines.slice(start, end + 1);
   const count = rows.length;
   // 4- to 8-string instruments (guitar, 7/8-string, bass) are all tablature.
