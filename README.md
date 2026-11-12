@@ -109,10 +109,11 @@ The app also runs on any static host with **guest mode only**: without
   with the metronome, building a set list
 
 **Transcribe (`#/transcribe`)**
-- Record from the microphone or load an audio file you own; the YIN detector
-  runs over short frames, groups them into notes, quantises to a 16th grid at
-  the chosen tempo, maps each pitch to the highest playable string and writes
-  ASCII tab that opens in the reader
+- Record from the microphone or load an audio file you own. Attacks (energy
+  onsets) split the take into events, and each event is read from an FFT with a
+  harmonic template, so chords up to four notes and repeated notes are kept
+  apart. Events are quantised to a 16th grid, placed on distinct strings and
+  written as ASCII tab that opens in the reader
 - The tempo is estimated from the recording (onset-flux autocorrelation, 70–180
   BPM) and written into the Tempo field; analysis shows a spinner, percentage
   and elapsed time, and recording shows a running clock

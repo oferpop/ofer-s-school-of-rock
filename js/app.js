@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112l";
+import { songs, byId, versionsOf } from "./data.js?v=20261112n";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112l";
+} from "./chords.js?v=20261112n";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112l";
+} from "./pro.js?v=20261112n";
 
 import {
   probe,
@@ -38,12 +38,12 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112l";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112l";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112l";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112l";
-import { renderStaff } from "./staff.js?v=20261112l";
-import { detectNotes, detectNotesAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112l";
+} from "./auth.js?v=20261112n";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112n";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112n";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112n";
+import { renderStaff } from "./staff.js?v=20261112n";
+import { detectChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112n";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1979,7 +1979,7 @@ function wireTranscribe() {
       status.textContent = `Analysing ${buffer.duration.toFixed(1)}s…`;
       if (progress) progress.hidden = false;
 
-      const notes = await detectNotesAsync(samples, buffer.sampleRate, {}, (fraction) => {
+      const events = await detectChordsAsync(samples, buffer.sampleRate, {}, (fraction) => {
         const percent = Math.round(fraction * 100);
         if (fill) fill.style.width = `${percent}%`;
         status.textContent = `Analysing… ${percent}% · ${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
@@ -1992,9 +1992,9 @@ function wireTranscribe() {
         tempoNote = ` · tempo ${tempo.bpm} BPM`;
       }
 
-      output.value = notesToTab(notes, { bpm: bpmValue(), tuning: tuningValue() });
+      output.value = notesToTab(events, { bpm: bpmValue(), tuning: tuningValue() });
       const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
-      status.textContent = `${notes.length} notes${tempoNote} · ${seconds}s`;
+      status.textContent = `${events.length} notes/chords${tempoNote} · ${seconds}s`;
       ctx.close().catch(() => {});
     } catch (error) {
       status.textContent = `Could not decode that audio (${error.message || error.name}).`;
