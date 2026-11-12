@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112w";
+} from "./chords.js?v=20261112x";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -141,6 +141,14 @@ function tokenizeTabRow(body) {
     if (harmonic) {
       tokens.push({ index, kind: "harmonic", fret: Number(harmonic[1]), length: harmonic[0].length });
       index += harmonic[0].length;
+      continue;
+    }
+    // (0), (12) or (x): a tied/ghost note. It is held, not picked again, so it
+    // must not create a new attack.
+    const ghost = /^\((\d{1,2}|x|X)\)/.exec(rest);
+    if (ghost) {
+      tokens.push({ index, kind: "tie", fret: ghost[1].toLowerCase() === "x" ? null : Number(ghost[1]), length: ghost[0].length });
+      index += ghost[0].length;
       continue;
     }
     if (body[index] === "x" || body[index] === "X") {
@@ -312,7 +320,11 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         }
       });
 
-      const ordered = [...columns.entries()].sort((a, b) => a[0] - b[0]);
+      // A column holding only ties adds no attack. Dropping it lets the note
+      // before it stay held until the next real pick instead of being cut short.
+      const ordered = [...columns.entries()]
+        .filter(([, tokens]) => tokens.some((token) => token.kind !== "tie"))
+        .sort((a, b) => a[0] - b[0]);
       const blockColumns = Math.max(1, ...rows.map((row) => row.body.replace(/\|/g, "").length));
       const blockStart = timeOffset;
       const blockEnd = timeOffset + blockColumns * step;
@@ -331,6 +343,7 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         const played = [];
 
         for (const note of notes) {
+          if (note.kind === "tie") continue;
           const stringMidi = tuning[tuning.length - 1 - note.rowIndex];
           if (stringMidi === undefined) continue;
 

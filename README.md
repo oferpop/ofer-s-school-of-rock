@@ -73,8 +73,10 @@ The app also runs on any static host with **guest mode only**: without
   hammer-ons/pull-offs (`7h9`) and vibrato (`7~`) are played as pitch movement
   or articulated note pairs, not as separate columns; dead notes (`x`) become
   muted thumps, harmonics (`<7>`, `<12>`) are pitched from the harmonic series
-  and taps (`t12`) are normal strikes. The staff draws a bend arrow, an X for
-  dead notes, a diamond for harmonics and a T for taps
+  and taps (`t12`) are normal strikes. A parenthesised fret — `(0)`, `(12)` or
+  `(x)` — is a tie or ghost note: it is held, not picked again, so it produces
+  no new attack. The staff draws a bend arrow, an X for dead notes, a diamond
+  for harmonics and a T for taps
 - **Playhead** — a vertical marker follows the exact column being played, with a
   progress bar in the transport; click any point in the tab (or the bar) and
   playback jumps there and continues
