@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112d";
+} from "./chords.js?v=20261112e";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -410,8 +410,16 @@ export async function countIn(bpm, beats = 4) {
 }
 
 // Does the played pitch land on one of the notes written at this point?
-export function matchesTargets(detectedMidi, targets, tolerance = 0.6) {
-  return targets.some((target) => Math.abs(detectedMidi - target) <= tolerance);
+// Guitar melodies are often played an octave away from the written part, so
+// Follow can accept the same pitch class in another octave.
+export function matchesTargets(detectedMidi, targets, tolerance = 0.6, octaveTolerant = false) {
+  return targets.some((target) => {
+    const diff = Math.abs(detectedMidi - target);
+    if (diff <= tolerance) return true;
+    if (!octaveTolerant) return false;
+    const pitchClass = Math.abs(((diff % 12) + 12) % 12);
+    return pitchClass <= tolerance || Math.abs(pitchClass - 12) <= tolerance;
+  });
 }
 
 export class TabPlayer {

@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112d";
+import { songs, byId, versionsOf } from "./data.js?v=20261112e";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112d";
+} from "./chords.js?v=20261112e";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -27,7 +27,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112d";
+} from "./pro.js?v=20261112e";
 
 import {
   probe,
@@ -36,11 +36,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112d";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112d";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112d";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112d";
-import { renderStaff } from "./staff.js?v=20261112d";
+} from "./auth.js?v=20261112e";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112e";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112e";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112e";
+import { renderStaff } from "./staff.js?v=20261112e";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1410,7 +1410,7 @@ function onFollowPitch(reading) {
     heardEl.textContent = `${heardNote.name}${heardNote.octave} ${reading.cents > 0 ? "+" : ""}${reading.cents}¢`;
   }
 
-  if (matchesTargets(heard, event.midi)) {
+  if (matchesTargets(heard, event.midi, 0.8, true)) {
     if (!followState.armed) return;
     followState.armed = false;
     followState.correct += 1;

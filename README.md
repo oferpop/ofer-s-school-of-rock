@@ -77,8 +77,9 @@ The app also runs on any static host with **guest mode only**: without
 - **Space** toggles play/pause anywhere on a song page (except while typing)
 - **Follow** — listens to the microphone (same tuner engine), shows the note the
   tab expects next, advances when you play it, counts wrong notes, and keeps the
-  highlighted line and playhead on the note you owe. A new attack is required for
-  repeated notes; Skip moves on, and it stops itself at the end
+  highlighted line and playhead on the note you owe. It accepts the same pitch
+  class an octave away (melodies are often played in another position), needs a
+  new attack for repeated notes, and Skip moves on; it stops at the end
 - **Video** — paste a YouTube link per song; it is saved with the tab and
   synced to the account. The poster never contacts YouTube: the
   `youtube-nocookie` iframe is created only when you press play
@@ -218,6 +219,9 @@ it stays in your browser.
 - YIN pitch detection (difference function + cumulative-mean normalisation) at
   ~14 readings per second, with parabolic interpolation; tested from E1 (41 Hz)
   to A4 (440 Hz), silence returns no reading
+- Stability: a 0.012 RMS gate rejects pick noise and room sound, readings need a
+  clarity below 0.22, and the shown note is the median of the last five readings
+  with two agreeing frames before it may change
 - `noteFromFrequency()` maps Hz to a note, octave and cents around A4 = 440
 - Reference tones are short triangle-wave envelopes; the microphone is stopped
   and the AudioContext closed whenever the page or tuning changes

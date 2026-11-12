@@ -86,7 +86,8 @@ function detectPitch(buffer, sampleRate) {
   const size = buffer.length;
   let energy = 0;
   for (let i = 0; i < size; i++) energy += buffer[i] * buffer[i];
-  if (Math.sqrt(energy / size) < 0.008) return null;
+  // Ignore pick noise, hiss and the room: a plucked string is much louder.
+  if (Math.sqrt(energy / size) < 0.012) return null;
 
   const minLag = Math.max(2, Math.floor(sampleRate / 1200));
   const maxLag = Math.min(Math.floor(sampleRate / 38), size - 2);
@@ -138,9 +139,14 @@ function detectPitch(buffer, sampleRate) {
   const a = (x1 + x3 - 2 * x2) / 2;
   const b = (x3 - x1) / 2;
   const shift = a ? -b / (2 * a) : 0;
+  const clarity = norm[candidate];
+  // A dip that is not deep enough is noise or an attack transient.
+  if (clarity > 0.22) return null;
+
   const period = candidate + Math.max(-0.5, Math.min(0.5, shift));
   const frequency = sampleRate / period;
-  return Number.isFinite(frequency) && frequency > 30 ? frequency : null;
+  if (!Number.isFinite(frequency) || frequency <= 30) return null;
+  return { frequency, clarity };
 }
 
 export class Tuner {
@@ -209,6 +215,10 @@ export class Tuner {
 
     this.running = true;
     this.lastRead = 0;
+    this.history = [];
+    this.stable = null;
+    this.pending = 0;
+    this.lastEmit = 0;
     const loop = () => {
       if (!this.running) return;
       this.raf = requestAnimationFrame(loop);
@@ -216,11 +226,49 @@ export class Tuner {
       if (now - this.lastRead < 70) return; // ~14 readings per second
       this.lastRead = now;
       this.analyser.getFloatTimeDomainData(this.buffer);
-      const frequency = detectPitch(this.buffer, this.ctx.sampleRate);
-      if (frequency) this.onResult?.(noteFromFrequency(frequency));
+      const result = detectPitch(this.buffer, this.ctx.sampleRate);
+      if (result) this.pushReading(result);
+      else this.markSilence();
     };
     this.raf = requestAnimationFrame(loop);
     return true;
+  }
+
+  // Median of the last few readings, and two agreeing readings before the
+  // note may change: stops the display jumping between neighbours/octaves.
+  pushReading({ frequency }) {
+    const note = noteFromFrequency(frequency);
+    const midi = note.midi + note.cents / 100;
+    const now = performance.now();
+    if (now - (this.lastReadingAt || 0) > 300) this.history = [];
+    this.lastReadingAt = now;
+    this.history.push(midi);
+    if (this.history.length > 5) this.history.shift();
+    if (this.history.length < 3) return;
+
+    const sorted = [...this.history].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    if (sorted[sorted.length - 1] - sorted[0] > 1.5) return;
+
+    if (this.stable === null || this.stable === undefined || Math.abs(median - this.stable) > 0.9) {
+      this.pending = (this.pending || 0) + 1;
+      if (this.pending < 2) return;
+      this.pending = 0;
+    }
+    this.stable = median;
+
+    if (now - (this.lastEmit || 0) < 90) return;
+    this.lastEmit = now;
+    const smoothed = 440 * 2 ** ((median - 69) / 12);
+    this.onResult?.(noteFromFrequency(smoothed));
+  }
+
+  markSilence() {
+    if (performance.now() - (this.lastReadingAt || 0) > 250) {
+      this.history = [];
+      this.stable = null;
+      this.pending = 0;
+    }
   }
 
   stop() {
