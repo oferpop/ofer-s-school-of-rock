@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112h";
+import { songs, byId, versionsOf } from "./data.js?v=20261112j";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112h";
+} from "./chords.js?v=20261112j";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -19,6 +19,8 @@ import {
   persistVideos,
   loadRatings,
   persistRatings,
+  loadTempos,
+  persistTempos,
   practiceTotals,
   practiceBySong,
   clampBpm,
@@ -27,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112h";
+} from "./pro.js?v=20261112j";
 
 import {
   probe,
@@ -36,11 +38,11 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112h";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112h";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112h";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112h";
-import { renderStaff } from "./staff.js?v=20261112h";
+} from "./auth.js?v=20261112j";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112j";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112j";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112j";
+import { renderStaff } from "./staff.js?v=20261112j";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -57,6 +59,7 @@ const state = {
   playlists: loadPlaylists(),
   videos: loadVideos(),
   ratings: loadRatings(),
+  tempos: loadTempos(),
   picker: "",
   backupNote: "",
   display: localStorage.getItem("osr.display") || "tab",
@@ -821,10 +824,11 @@ function songView(id) {
     return `<main class="ws"><p class="empty">That tab does not exist. <a href="#/">Back to the catalog</a>.</p></main>`;
   }
   // Each song carries its own tempo: load it for the player and metronome.
-  if (playerState.tempoSongId !== song.id) {
+  const songBpm = clampBpm(Number(state.tempos[song.id] ?? song.bpm) || 100);
+  if (playerState.tempoSongId !== song.id || playerState.bpm !== songBpm) {
     playerState.tempoSongId = song.id;
-    playerState.bpm = clampBpm(Number(song.bpm) || 100);
-    metro.setBpm(playerState.bpm);
+    playerState.bpm = songBpm;
+    metro.setBpm(songBpm);
   }
 
   const importedSong = isImported(song);
@@ -974,7 +978,8 @@ function songView(id) {
 
         <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span> Capo: ${esc(
           song.capo,
-        )} <span>·</span> Tempo: ${clampBpm(Number(song.bpm) || 100)} BPM${
+        )} <span>·</span> <label class="tempo-edit">Tempo
+          <input id="tempo-input" type="number" min="40" max="240" step="1" value="${songBpm}" aria-label="Song tempo in BPM" /> BPM</label>${
           song.youtube
             ? ` <span>·</span> <a class="youtube-link" href="https://www.youtube.com/watch?v=${esc(
                 song.youtube,
@@ -1930,6 +1935,7 @@ function snapshotState() {
     playlists: state.playlists,
     practice: loadPractice(),
     ratings: state.ratings,
+    tempos: state.tempos,
     videos: state.videos,
   };
 }
@@ -1951,6 +1957,13 @@ function applyState(remote) {
     ),
   );
   persistRatings(state.ratings);
+  const remoteTempos = remote.tempos && typeof remote.tempos === "object" ? remote.tempos : {};
+  state.tempos = Object.fromEntries(
+    Object.entries(remoteTempos).filter(
+      ([, value]) => Number.isInteger(value) && value >= 40 && value <= 240,
+    ),
+  );
+  persistTempos(state.tempos);
   state.videos = remote.videos && typeof remote.videos === "object" && !Array.isArray(remote.videos)
     ? remote.videos
     : {};
@@ -1965,11 +1978,13 @@ function clearLocalState() {
   state.playlists = [];
   state.videos = {};
   state.ratings = {};
+  state.tempos = {};
   localStorage.removeItem(SAVED_KEY);
   localStorage.removeItem(IMPORTED_KEY);
   localStorage.removeItem("osr.playlists.v1");
   localStorage.removeItem("osr.videos.v1");
   localStorage.removeItem("osr.ratings.v1");
+  localStorage.removeItem("osr.tempos.v1");
   persistPractice({});
   applyingRemote = false;
 }
@@ -2469,7 +2484,7 @@ function siteFooter() {
   return `
     <footer class="site-footer">
       <span>Ofer's School of Rock Pro</span>
-      <span class="dim">build 2026-11-10 · tab player</span>
+      <span class="dim">build 2026-11-12 · tempo &amp; follow</span>
     </footer>`;
 }
 
@@ -2689,6 +2704,24 @@ function wire() {
         title="Song video"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
         allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+    });
+  }
+
+  const tempoInput = document.getElementById("tempo-input");
+  if (tempoInput) {
+    tempoInput.addEventListener("change", () => {
+      const bpm = clampBpm(Number(tempoInput.value) || 100);
+      state.tempos = { ...state.tempos, [song.id]: bpm };
+      persistTempos(state.tempos);
+      queueSync();
+      playerState.tempoSongId = song.id;
+      playerState.bpm = bpm;
+      metro.setBpm(bpm);
+      const metroValue = document.getElementById("bpm-value");
+      if (metroValue) metroValue.textContent = String(bpm);
+      if (playerState.status !== "stopped") stopPlayer();
+      updatePlayerBar();
+      tempoInput.value = String(bpm);
     });
   }
 

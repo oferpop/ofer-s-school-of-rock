@@ -778,6 +778,28 @@ input {
   margin: 0 4px;
 }
 
+.tempo-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tempo-edit input {
+  width: 60px;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12.5px;
+  text-align: center;
+  outline: none;
+}
+
+.tempo-edit input:focus {
+  border-color: #4b4b53;
+}
+
 .youtube-link {
   color: var(--muted);
   text-decoration: underline;

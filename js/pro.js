@@ -5,6 +5,7 @@ const PLAYLISTS_KEY = "osr.playlists.v1";
 const PRACTICE_KEY = "osr.practice.v1";
 const VIDEOS_KEY = "osr.videos.v1";
 const RATINGS_KEY = "osr.ratings.v1";
+const TEMPOS_KEY = "osr.tempos.v1";
 
 // --- playlists ----------------------------------------------------------
 
@@ -32,6 +33,21 @@ export function newPlaylist(name) {
 
 export function playlistOf(playlists, id) {
   return playlists.find((p) => p.id === id) || null;
+}
+
+// --- tempo overrides ----------------------------------------------------
+
+export function loadTempos() {
+  try {
+    const map = JSON.parse(localStorage.getItem(TEMPOS_KEY) || "{}");
+    return map && typeof map === "object" && !Array.isArray(map) ? map : {};
+  } catch {
+    return {};
+  }
+}
+
+export function persistTempos(map) {
+  localStorage.setItem(TEMPOS_KEY, JSON.stringify(map));
 }
 
 // --- ratings ------------------------------------------------------------

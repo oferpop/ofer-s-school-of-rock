@@ -217,6 +217,7 @@ def valid_state(payload: object) -> dict | None:
     imported = payload.get("imported", [])
     playlists = payload.get("playlists", [])
     practice = payload.get("practice", {})
+    tempos = payload.get("tempos", {})
     videos = payload.get("videos", {})
     if not isinstance(saved, list) or not all(isinstance(v, str) for v in saved):
         return None
@@ -238,6 +239,10 @@ def valid_state(payload: object) -> dict | None:
         isinstance(k, str) and isinstance(v, int) and 1 <= v <= 5 for k, v in ratings.items()
     ):
         return None
+    if not isinstance(tempos, dict) or not all(
+        isinstance(k, str) and isinstance(v, int) and 40 <= v <= 240 for k, v in tempos.items()
+    ):
+        return None
     if not isinstance(videos, dict):
         return None
     video_id_re = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -254,6 +259,7 @@ def valid_state(payload: object) -> dict | None:
         "playlists": playlists,
         "practice": practice,
         "ratings": ratings,
+        "tempos": tempos,
         "videos": videos,
     }
     if len(json.dumps(clean)) > MAX_BODY:
