@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112av";
+import { songs, byId, versionsOf } from "./data.js?v=20261112ax";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112av";
+} from "./chords.js?v=20261112ax";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112av";
+} from "./pro.js?v=20261112ax";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112av";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112av";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112av";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112av";
-import { renderStaff } from "./staff.js?v=20261112av";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112av";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112av";
+} from "./auth.js?v=20261112ax";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ax";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ax";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ax";
+import { renderStaff } from "./staff.js?v=20261112ax";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ax";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ax";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1467,6 +1467,7 @@ function playerBar(song = null) {
       <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
       <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
       <button class="pill ${followState.active ? "is-on" : ""}" id="player-follow" aria-pressed="${followState.active}" title="Listen to you play and follow the tab">Follow</button>
+      <span class="now-chord" id="now-chord" hidden>—</span>
       <span class="player-time dim" id="player-time">${time} / ${total}</span>
       <span class="player-kind dim" id="player-kind">${
         playerState.parsed
@@ -1757,9 +1758,50 @@ function visualIndex(text, column) {
 
 // Place the playhead from a time, not from the last event, so it keeps moving
 // through rests and long notes and always agrees with the progress bar.
+function currentChordAt(seconds) {
+  const parsed = playerState.parsed;
+  if (parsed?.kind !== "chords") return null;
+  let current = null;
+  for (const event of parsed.events) {
+    if (!event.chord) continue;
+    if (event.time <= seconds + 0.001) current = event;
+    else break;
+  }
+  return current;
+}
+
+function paintCurrentChord(event) {
+  document.querySelectorAll(".sheet .ch.is-current").forEach((chord) => chord.classList.remove("is-current"));
+  const now = document.getElementById("now-chord");
+  if (!now) return;
+  if (!event) {
+    now.hidden = true;
+    now.textContent = "—";
+    now.classList.remove("is-on");
+    return;
+  }
+  now.hidden = false;
+  now.textContent = event.chord;
+  now.classList.add("is-on");
+  const lineIndex = event.lines?.[0];
+  if (lineIndex === undefined) return;
+  const lineEl = document.querySelector(`.sheet [data-line="${lineIndex}"]`);
+  if (!lineEl) return;
+  const lineEvents = playerState.parsed.events.filter(
+    (item) => item.chord && item.lines[0] === lineIndex,
+  );
+  const order = lineEvents.indexOf(event);
+  const tokens = lineEl.querySelectorAll(".ch");
+  if (order >= 0 && tokens[order]) tokens[order].classList.add("is-current");
+}
+
 function paintPlayheadAtTime(seconds) {
   if (playerState.parsed?.kind === "score") {
     paintScoreAt(document.querySelector(".score-sheet"), seconds, playerState.bpm);
+    return;
+  }
+  if (playerState.parsed?.kind === "chords") {
+    paintCurrentChord(currentChordAt(seconds));
     return;
   }
   const blocks = playerState.blocks;
@@ -1793,6 +1835,7 @@ function paintPlayheadAtTime(seconds) {
 
 function clearPlayhead() {
   paintTimeline(0);
+  paintCurrentChord(null);
   document.getElementById("timeline-pulse")?.classList.remove("is-hit");
   document.querySelectorAll(".score-note.is-active").forEach((note) => note.classList.remove("is-active"));
   document.querySelectorAll(".tab-playhead").forEach((marker) => {
@@ -2105,6 +2148,45 @@ function drawScoreLoop() {
   });
 }
 
+function drawChordLoop(parsed) {
+  document.querySelectorAll(".sheet .line.has-loop").forEach((line) => {
+    line.classList.remove("has-loop");
+    line.style.removeProperty("--loop-left");
+    line.style.removeProperty("--loop-width");
+  });
+  if (!playerState.loop || playerState.loopEnd <= playerState.loopStart + 0.05) return;
+  if (parsed?.kind !== "chords") return;
+  const lines = document.querySelectorAll(".sheet .line[data-line]");
+  for (const line of lines) {
+    const index = Number(line.dataset.line);
+    const events = parsed.events.filter((event) => event.chord && event.lines[0] === index);
+    if (!events.length) continue;
+    const tokens = line.querySelectorAll(".ch");
+    if (!tokens.length) continue;
+    const first = events.findIndex((event) => event.time >= playerState.loopStart - 0.001);
+    if (first === -1) continue;
+    let last = -1;
+    for (let i = events.length - 1; i >= 0; i--) {
+      if (events[i].time <= playerState.loopEnd + 0.001) {
+        last = i;
+        break;
+      }
+    }
+    if (last < first) continue;
+    const startToken = tokens[Math.min(first, tokens.length - 1)];
+    const endToken = tokens[Math.min(last, tokens.length - 1)];
+    const left = playerState.loopStart <= events[0].time ? 0 : startToken.offsetLeft;
+    const right =
+      playerState.loopEnd >= events[events.length - 1].time
+        ? line.clientWidth
+        : endToken.offsetLeft + endToken.offsetWidth;
+    const width = Math.max(4, right - left);
+    line.classList.add("has-loop");
+    line.style.setProperty("--loop-left", `${left}px`);
+    line.style.setProperty("--loop-width", `${width}px`);
+  }
+}
+
 function drawLoopRange() {
   const parsed = playerState.parsed;
   const active = parsed && playerState.loopEnd > playerState.loopStart + 0.05;
@@ -2141,16 +2223,8 @@ function drawLoopRange() {
     band.style.width = `${Math.max(2, right - left)}px`;
   });
 
-  document.querySelectorAll(".sheet .line.is-loop").forEach((line) => line.classList.remove("is-loop"));
-  if (active && parsed?.kind === "chords") {
-    for (const event of parsed.events) {
-      if (event.time >= playerState.loopStart - 0.001 && event.time <= playerState.loopEnd + 0.001) {
-        document.querySelectorAll(`.sheet [data-line="${event.lines[0]}"]`).forEach((line) => line.classList.add("is-loop"));
-      }
-    }
-  }
-
   drawScoreLoop();
+  drawChordLoop(parsed);
   paintTimeline(playerState.status === "playing" ? tabPlayer.elapsed() : tabPlayer.position);
 }
 
@@ -2215,6 +2289,7 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
     paintPlayheadAtTime(from);
   }
   updatePlayerBar();
+  drawLoopRange();
 }
 
 async function togglePlayer(song) {
@@ -3594,6 +3669,7 @@ function wire() {
       if (metroValue) metroValue.textContent = String(bpm);
       if (playerState.status !== "stopped") stopPlayer();
       buildTimeline(song);
+      drawLoopRange();
       updatePlayerBar();
       tempoInput.value = String(bpm);
     });

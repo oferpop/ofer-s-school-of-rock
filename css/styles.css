@@ -1204,9 +1204,61 @@ input {
   cursor: ew-resize;
 }
 
-.sheet .line.is-loop {
-  background: rgba(255, 210, 63, 0.1);
+.sheet .line {
+  position: relative;
+  z-index: 0;
+}
+
+.sheet .line.has-loop::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--loop-left, 0);
+  width: var(--loop-width, 0);
   border-radius: 4px;
+  background: rgba(255, 210, 63, 0.16);
+  border-left: 1px solid rgba(255, 210, 63, 0.7);
+  border-right: 1px solid rgba(255, 210, 63, 0.7);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.sheet .ch.is-current {
+  background: var(--accent);
+  color: #151512;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, 0.25);
+}
+
+.now-chord {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #18181c;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.now-chord[hidden] {
+  display: none;
+}
+
+.now-chord.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 210, 63, 0.1);
+}
+
+.rail-player .now-chord {
+  grid-column: 1 / -1;
+  justify-self: center;
+  order: 9;
+  margin: 2px auto;
 }
 
 .score-note {
@@ -3423,9 +3475,61 @@ a.tab-row:hover {
   cursor: ew-resize;
 }
 
-.sheet .line.is-loop {
-  background: rgba(255, 210, 63, 0.1);
+.sheet .line {
+  position: relative;
+  z-index: 0;
+}
+
+.sheet .line.has-loop::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--loop-left, 0);
+  width: var(--loop-width, 0);
   border-radius: 4px;
+  background: rgba(255, 210, 63, 0.16);
+  border-left: 1px solid rgba(255, 210, 63, 0.7);
+  border-right: 1px solid rgba(255, 210, 63, 0.7);
+  pointer-events: none;
+  z-index: -1;
+}
+
+.sheet .ch.is-current {
+  background: var(--accent);
+  color: #151512;
+  box-shadow: 0 0 0 2px rgba(255, 210, 63, 0.25);
+}
+
+.now-chord {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #18181c;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.now-chord[hidden] {
+  display: none;
+}
+
+.now-chord.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255, 210, 63, 0.1);
+}
+
+.rail-player .now-chord {
+  grid-column: 1 / -1;
+  justify-self: center;
+  order: 9;
+  margin: 2px auto;
 }
 
 .score-note {
