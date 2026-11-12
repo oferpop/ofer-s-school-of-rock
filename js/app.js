@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112r";
+import { songs, byId, versionsOf } from "./data.js?v=20261112t";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112r";
+} from "./chords.js?v=20261112t";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112r";
+} from "./pro.js?v=20261112t";
 
 import {
   probe,
@@ -38,15 +38,34 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112r";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112r";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112r";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112r";
-import { renderStaff } from "./staff.js?v=20261112r";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112r";
+} from "./auth.js?v=20261112t";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112t";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112t";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112t";
+import { renderStaff } from "./staff.js?v=20261112t";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112t";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
+const CAPOS_KEY = "osr.capos.v1";
+
+function loadCapos() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CAPOS_KEY));
+    return raw && typeof raw === "object" ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistCapos(map) {
+  localStorage.setItem(CAPOS_KEY, JSON.stringify(map));
+}
+
+function clampCapo(value) {
+  const number = Math.round(Number(value) || 0);
+  return Math.max(0, Math.min(9, number));
+}
 
 // Tabs pasted by the reader live only in this browser — they are never part of
 // the shipped catalog, so the repo carries no third-party transcriptions.
@@ -61,6 +80,7 @@ const state = {
   videos: loadVideos(),
   ratings: loadRatings(),
   tempos: loadTempos(),
+  capos: loadCapos(),
   picker: "",
   backupNote: "",
   display: localStorage.getItem("osr.display") || "tab",
@@ -70,6 +90,8 @@ const state = {
   videoEditing: false,
   videoError: "",
   tunerTuning: localStorage.getItem("osr.tuning.v1") || "guitar",
+  tunerMode: localStorage.getItem("osr.tunermode.v1") || "auto",
+  tunerString: -1,
   // accounts
   user: null,
   authAvailable: null,
@@ -530,7 +552,7 @@ function hasTabBlocks(song) {
   return lines.some((_, index) => tabBlockEnd(lines, index) !== -1);
 }
 
-function renderSheet(song, maxLines = 0) {
+function renderSheet(song, maxLines = 0, capo = 0) {
   const allLines = song.body.split("\n");
   const lines = maxLines ? allLines.slice(0, maxLines) : allLines;
   const chordTokens = chordTokensByLine(song.body);
@@ -541,7 +563,7 @@ function renderSheet(song, maxLines = 0) {
     if (!parsed) {
       parsed = parseSong(song, {
         bpm: playerState.bpm,
-        transpose: state.transpose,
+        transpose: state.transpose - (song.type === "chords" ? capo : 0),
         flats: state.flats,
         simplify: state.simplify,
       });
@@ -575,7 +597,8 @@ function renderSheet(song, maxLines = 0) {
         if (!isChordToken(tok)) return esc(tok);
         if (!allowed.has(tok)) return esc(tok);
         let chord = tok;
-        if (state.transpose) chord = transposeChord(chord, state.transpose, state.flats);
+        const shift = state.transpose - capo;
+        if (shift) chord = transposeChord(chord, shift, state.flats);
         else if (state.flats) chord = transposeChord(chord, 0, true);
         if (state.simplify) chord = simplifyChord(chord);
         return `<span class="ch" data-chord="${esc(chord)}">${esc(chord)}</span>`;
@@ -612,11 +635,12 @@ function renderSheet(song, maxLines = 0) {
   return `<div class="sheet" style="--sheet-font: ${(15 * state.fontScale).toFixed(1)}px">${out.join("")}</div>`;
 }
 
-function chordPanel(song) {
+function chordPanel(song, capo = 0) {
   const chords = uniqueChords(song.body)
     .map((c) => {
       let chord = c;
-      if (state.transpose) chord = transposeChord(chord, state.transpose, state.flats);
+      const shift = state.transpose - capo;
+      if (shift) chord = transposeChord(chord, shift, state.flats);
       else if (state.flats) chord = transposeChord(chord, 0, true);
       if (state.simplify) chord = simplifyChord(chord);
       return chord;
@@ -828,6 +852,7 @@ function songView(id) {
   }
   // Each song carries its own tempo: load it for the player and metronome.
   const songBpm = clampBpm(Number(state.tempos[song.id] ?? song.bpm) || 100);
+  const capo = clampCapo(state.capos[song.id]);
   if (playerState.tempoSongId !== song.id || playerState.bpm !== songBpm) {
     playerState.tempoSongId = song.id;
     playerState.bpm = songBpm;
@@ -979,9 +1004,16 @@ function songView(id) {
           }
         </div>
 
-        <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span> Capo: ${esc(
-          song.capo,
-        )} <span>·</span> <label class="tempo-edit">Tempo
+        <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span>
+          <span class="capo-edit" title="${esc(song.capo)}">Capo
+            <button class="pill sq capo-step" id="capo-down" aria-label="Capo down" ${
+              capo <= 0 ? "disabled" : ""
+            }>−</button>
+            <span class="pill sq value" id="capo-value">${capo}</span>
+            <button class="pill sq capo-step" id="capo-up" aria-label="Capo up" ${
+              capo >= 9 ? "disabled" : ""
+            }>+</button>
+          </span> <span>·</span> <label class="tempo-edit">Tempo
           <input id="tempo-input" type="number" min="40" max="240" step="1" value="${songBpm}" aria-label="Song tempo in BPM" /> BPM</label>${
           song.youtube
             ? ` <span>·</span> <a class="youtube-link" href="https://www.youtube.com/watch?v=${esc(
@@ -1019,8 +1051,8 @@ function songView(id) {
         ${videoPanel(song)}
 
         <div class="sheet-wrap">
-          ${renderSheet(song)}
-          ${chordPanel(song)}
+          ${renderSheet(song, 0, capo)}
+          ${chordPanel(song, capo)}
         </div>
 
         ${commentsSection()}
@@ -1191,15 +1223,44 @@ function learnView() {
 
 function tunerView() {
   const tuning = TUNINGS[state.tunerTuning] || TUNINGS.guitar;
+  const groups = new Map();
+  for (const [key, entry] of Object.entries(TUNINGS)) {
+    const group = entry.group || "Other";
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push([key, entry]);
+  }
+  // Show the highest string first, the way a headstock is drawn.
+  const pegs = tuning.strings.map(([name], index) => ({ name, index })).reverse();
+  const auto = state.tunerMode === "auto";
+  const chromatic = state.tunerMode === "chromatic";
+  const pinned = !auto && !chromatic && state.tunerString >= 0 ? tuning.strings[state.tunerString] : null;
+
   return `
     <main class="ws tuner-page">
       <section class="hero">
         <p class="crumb">Tool</p>
         <h1>Tuner</h1>
-        <p class="hero-sub">Chromatic tuning from your microphone — nothing is recorded or uploaded. Reference tones work without one.</p>
+        <p class="hero-sub">Chromatic tuning from your microphone. Auto mode finds the string for you; tap a peg to pin one string instead. Nothing is recorded or uploaded, and reference tones work without a microphone.</p>
       </section>
 
       <div class="tuner-card" id="tuner-readout">
+        <div class="tuner-modes" role="group" aria-label="Tuner mode">
+          <button class="pill ${auto ? "is-on" : ""}" id="tuner-mode-auto" aria-pressed="${auto}">Auto string</button>
+          <button class="pill ${chromatic ? "is-on" : ""}" id="tuner-mode-chromatic" aria-pressed="${chromatic}">Chromatic</button>
+        </div>
+
+        <div class="tuner-headstock" id="tuner-headstock">
+          ${pegs
+            .map(
+              ({ name, index }) => `<button class="string-peg ${
+                state.tunerMode === "string" && state.tunerString === index ? "is-selected" : ""
+              }" data-string="${index}" aria-pressed="${
+                state.tunerMode === "string" && state.tunerString === index
+              }" title="Tune ${esc(name)}"><span class="peg-name">${esc(name)}</span><span class="peg-dot" aria-hidden="true"></span></button>`,
+            )
+            .join("")}
+        </div>
+
         <div class="tuner-note-row">
           <span class="tuner-note" id="tuner-note">—</span>
           <span class="tuner-octave" id="tuner-octave"></span>
@@ -1209,17 +1270,25 @@ function tunerView() {
           <span class="tuner-marker" id="tuner-marker" aria-hidden="true"></span>
         </div>
         <p class="tuner-status" id="tuner-status">Press start and play a note.</p>
+        <p class="tuner-target dim" id="tuner-target">${
+          pinned ? `Target ${esc(pinned[0])} — or pick another peg` : auto ? "Auto — play any string" : "Chromatic — play any note"
+        }</p>
         <p class="tuner-hz dim" id="tuner-hz"></p>
         <div class="tuner-controls">
           <button class="pill primary" id="tuner-toggle" aria-pressed="false">Start listening</button>
           <label class="pill-select">Tuning
             <select id="tuning-select">
-              ${Object.entries(TUNINGS)
+              ${[...groups.entries()]
                 .map(
-                  ([key, entry]) =>
-                    `<option value="${key}" ${
-                      key === state.tunerTuning ? "selected" : ""
-                    }>${esc(entry.label)}</option>`,
+                  ([group, entries]) =>
+                    `<optgroup label="${esc(group)}">${entries
+                      .map(
+                        ([key, entry]) =>
+                          `<option value="${key}" ${
+                            key === state.tunerTuning ? "selected" : ""
+                          }>${esc(entry.label)}</option>`,
+                      )
+                      .join("")}</optgroup>`,
                 )
                 .join("")}
             </select>
@@ -1257,6 +1326,9 @@ function stopTuner() {
   if (octave) octave.textContent = "";
   if (marker) marker.style.left = "50%";
   if (hz) hz.textContent = "";
+  document.querySelectorAll(".string-peg").forEach((peg) => {
+    peg.classList.remove("is-heard", "is-tuned", "is-suggested");
+  });
 }
 
 // --- tab player ---------------------------------------------------------
@@ -2909,6 +2981,17 @@ function wire() {
     });
   }
 
+  const setCapo = (value) => {
+    const next = clampCapo(value);
+    state.capos = { ...state.capos, [song.id]: next };
+    persistCapos(state.capos);
+    render();
+  };
+  const capoDown = document.getElementById("capo-down");
+  if (capoDown) capoDown.addEventListener("click", () => setCapo(clampCapo(state.capos[song.id]) - 1));
+  const capoUp = document.getElementById("capo-up");
+  if (capoUp) capoUp.addEventListener("click", () => setCapo(clampCapo(state.capos[song.id]) + 1));
+
   const tempoInput = document.getElementById("tempo-input");
   if (tempoInput) {
     tempoInput.addEventListener("change", () => {
@@ -3270,37 +3353,131 @@ function wireTuner() {
   };
   setRunning(tunerRunning);
 
+  const paintPegs = (reading) => {
+    document.querySelectorAll(".string-peg").forEach((peg) => {
+      peg.classList.remove("is-heard", "is-tuned", "is-suggested");
+    });
+    if (reading.stringIndex === undefined) return;
+    const heard = document.querySelector(`.string-peg[data-string="${reading.stringIndex}"]`);
+    if (heard) heard.classList.add("is-heard");
+    if (heard && Math.abs(reading.stringCents) <= 5) heard.classList.add("is-tuned");
+    if (reading.wrongString && reading.suggestedIndex !== undefined) {
+      const suggested = document.querySelector(`.string-peg[data-string="${reading.suggestedIndex}"]`);
+      if (suggested) suggested.classList.add("is-suggested");
+    }
+  };
+
   const paint = (reading) => {
     const noteEl = el("tuner-note");
     const octaveEl = el("tuner-octave");
     const marker = el("tuner-marker");
     const statusEl = el("tuner-status");
     const hzEl = el("tuner-hz");
+    const targetEl = el("tuner-target");
     const readout = el("tuner-readout");
 
+    // With a string in play the needle follows the distance to that string;
+    // in chromatic mode it follows the nearest semitone.
+    const shown = reading.stringCents ?? reading.cents;
     if (noteEl) noteEl.textContent = reading.name;
     if (octaveEl) octaveEl.textContent = reading.octave;
-    const cents = Math.max(-50, Math.min(50, reading.cents));
-    if (marker) marker.style.left = `${50 + cents}%`;
-    const abs = Math.abs(reading.cents);
+    const markerCents = Math.max(-50, Math.min(50, shown));
+    if (marker) marker.style.left = `${50 + markerCents}%`;
+    const abs = Math.abs(shown);
     if (readout) {
       readout.classList.toggle("is-in-tune", abs <= 5);
       readout.classList.toggle("is-close", abs > 5 && abs <= 15);
     }
     if (statusEl) {
-      statusEl.textContent =
-        abs <= 5
+      statusEl.textContent = reading.wrongString
+        ? `That sounds like ${reading.wrongString} — check the string`
+        : abs <= 5
           ? "In tune"
           : abs <= 15
-            ? reading.cents > 0
-              ? `Slightly sharp (+${reading.cents}¢)`
-              : `Slightly flat (${reading.cents}¢)`
-            : reading.cents > 0
+            ? shown > 0
+              ? `Slightly sharp (+${shown}¢)`
+              : `Slightly flat (${shown}¢)`
+            : shown > 0
               ? "Sharp"
               : "Flat";
     }
+    if (targetEl) {
+      targetEl.textContent = reading.stringName
+        ? `String ${reading.stringName} · ${shown > 0 ? "+" : ""}${shown}¢`
+        : state.tunerMode === "chromatic"
+          ? "Chromatic — play any note"
+          : "Auto — play any string";
+    }
     if (hzEl) hzEl.textContent = `${reading.frequency.toFixed(1)} Hz · ${reading.cents > 0 ? "+" : ""}${reading.cents}¢`;
+    paintPegs(reading);
   };
+
+  const currentTuning = () => TUNINGS[state.tunerTuning] || TUNINGS.guitar;
+  const applyConfig = () =>
+    tuner.configure({
+      mode: state.tunerMode,
+      strings: currentTuning().strings,
+      stringIndex: state.tunerString,
+    });
+
+  const updateModeUi = () => {
+    const autoButton = el("tuner-mode-auto");
+    const chromaticButton = el("tuner-mode-chromatic");
+    const auto = state.tunerMode === "auto";
+    const chromatic = state.tunerMode === "chromatic";
+    if (autoButton) {
+      autoButton.classList.toggle("is-on", auto);
+      autoButton.setAttribute("aria-pressed", String(auto));
+    }
+    if (chromaticButton) {
+      chromaticButton.classList.toggle("is-on", chromatic);
+      chromaticButton.setAttribute("aria-pressed", String(chromatic));
+    }
+    document.querySelectorAll(".string-peg").forEach((peg) => {
+      const selected = state.tunerMode === "string" && Number(peg.dataset.string) === state.tunerString;
+      peg.classList.toggle("is-selected", selected);
+      peg.setAttribute("aria-pressed", String(selected));
+    });
+    const targetEl = el("tuner-target");
+    if (targetEl) {
+      const pinned = state.tunerMode === "string" ? currentTuning().strings[state.tunerString] : null;
+      targetEl.textContent = pinned
+        ? `Target ${pinned[0]} — tap the peg again for auto`
+        : chromatic
+          ? "Chromatic — play any note"
+          : "Auto — play any string";
+    }
+  };
+
+  const chooseMode = (mode) => {
+    state.tunerMode = mode;
+    state.tunerString = -1;
+    localStorage.setItem("osr.tunermode.v1", mode);
+    applyConfig();
+    updateModeUi();
+  };
+
+  const autoMode = el("tuner-mode-auto");
+  if (autoMode) autoMode.addEventListener("click", () => chooseMode("auto"));
+  const chromaticMode = el("tuner-mode-chromatic");
+  if (chromaticMode) chromaticMode.addEventListener("click", () => chooseMode("chromatic"));
+
+  const headstock = el("tuner-headstock");
+  if (headstock) {
+    headstock.addEventListener("click", (event) => {
+      const peg = event.target.closest("[data-string]");
+      if (!peg) return;
+      const index = Number(peg.dataset.string);
+      const pinned = state.tunerMode === "string" && state.tunerString === index;
+      state.tunerMode = pinned ? "auto" : "string";
+      state.tunerString = pinned ? -1 : index;
+      localStorage.setItem("osr.tunermode.v1", state.tunerMode);
+      applyConfig();
+      updateModeUi();
+    });
+  }
+
+  updateModeUi();
 
   toggle.addEventListener("click", async () => {
     if (tunerRunning) {
@@ -3317,6 +3494,7 @@ function wireTuner() {
     if (statusEl) statusEl.textContent = "Waiting for microphone permission…";
     toggle.disabled = true;
 
+    applyConfig();
     const outcome = await Promise.race([
       tuner.start({
         onResult: paint,
@@ -3356,7 +3534,10 @@ function wireTuner() {
   if (select) {
     select.addEventListener("change", (event) => {
       state.tunerTuning = event.target.value;
+      state.tunerString = -1;
+      if (state.tunerMode === "string") state.tunerMode = "auto";
       localStorage.setItem("osr.tuning.v1", state.tunerTuning);
+      localStorage.setItem("osr.tunermode.v1", state.tunerMode);
       stopTuner();
       render();
     });

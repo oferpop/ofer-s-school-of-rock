@@ -50,7 +50,9 @@ The app also runs on any static host with **guest mode only**: without
 
 **Tab reader (`#/song/:id`)**
 - Title, view/save/comment stats, author and difficulty line
-- `Tuning · Key · Capo` header that tracks transposition
+- `Tuning · Key · Capo` header that tracks transposition, with a capo stepper
+  (0–9): shape chords drop by the capo while the sounding key and playback stay
+  put, and each song remembers its capo in this browser
 - Monospace chord sheet with chord chips, `[Section]` headers and ASCII tab blocks
 - **Autoscroll** with adjustable speed (0.1 → 1.0), stops at the page bottom
 - **Transpose** ±11 semitones — chords, the key label and every diagram update
@@ -129,10 +131,18 @@ The app also runs on any static host with **guest mode only**: without
   downloads audio from YouTube or Spotify
 
 **Tuner (`#/tuner`)**
-- Chromatic tuner from the microphone: note, octave, cents and a needle, with an
-  in-tune band of ±5 cents
-- Reference tones for guitar (standard, drop D, half step down), 4-string bass
-  and ukulele; the chosen tuning is remembered
+- Microphone tuner with two modes: **Auto string** (picks the nearest string
+  and shows cents relative to it) and **Chromatic** (any note, no string). Tap
+  a peg on the headstock to pin one string instead; tapping it again returns to
+  auto
+- When a string is pinned and the pitch clearly belongs to another one, the
+  status says which string it hears and highlights that peg, so a wrong string
+  is caught before you retune it
+- Fourteen tunings across guitar (standard, drop D/C/B, half and whole step
+  down, open G/D/E, DADGAD), 4- and 5-string bass, and ukulele (standard and
+  low G); the choice and mode are remembered
+- A string that is within ±5 cents turns its peg green; reference tones play
+  each string through the speakers without a microphone
 - Audio is analysed in the page and never recorded or uploaded
 
 **Ratings and comments**

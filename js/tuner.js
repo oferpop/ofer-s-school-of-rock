@@ -6,6 +6,7 @@ const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", 
 export const TUNINGS = {
   guitar: {
     label: "Guitar · standard",
+    group: "Guitar",
     strings: [
       ["E2", 82.41],
       ["A2", 110.0],
@@ -17,6 +18,7 @@ export const TUNINGS = {
   },
   dropd: {
     label: "Guitar · drop D",
+    group: "Guitar",
     strings: [
       ["D2", 73.42],
       ["A2", 110.0],
@@ -28,6 +30,7 @@ export const TUNINGS = {
   },
   halfdown: {
     label: "Guitar · half step down",
+    group: "Guitar",
     strings: [
       ["Eb2", 77.78],
       ["Ab2", 103.83],
@@ -37,9 +40,105 @@ export const TUNINGS = {
       ["Eb4", 311.13],
     ],
   },
+  wholestep: {
+    label: "Guitar · whole step down",
+    group: "Guitar",
+    strings: [
+      ["D2", 73.42],
+      ["G2", 98.0],
+      ["C3", 130.81],
+      ["F3", 174.61],
+      ["A3", 220.0],
+      ["D4", 293.66],
+    ],
+  },
+  dropc: {
+    label: "Guitar · drop C",
+    group: "Guitar",
+    strings: [
+      ["C2", 65.41],
+      ["G2", 98.0],
+      ["C3", 130.81],
+      ["F3", 174.61],
+      ["A3", 220.0],
+      ["D4", 293.66],
+    ],
+  },
+  dropb: {
+    label: "Guitar · drop B",
+    group: "Guitar",
+    strings: [
+      ["B1", 61.74],
+      ["F#2", 92.5],
+      ["B2", 123.47],
+      ["E3", 164.81],
+      ["G#3", 207.65],
+      ["C#4", 277.18],
+    ],
+  },
+  openg: {
+    label: "Guitar · open G",
+    group: "Guitar",
+    strings: [
+      ["D2", 73.42],
+      ["G2", 98.0],
+      ["D3", 146.83],
+      ["G3", 196.0],
+      ["B3", 246.94],
+      ["D4", 293.66],
+    ],
+  },
+  opend: {
+    label: "Guitar · open D",
+    group: "Guitar",
+    strings: [
+      ["D2", 73.42],
+      ["A2", 110.0],
+      ["D3", 146.83],
+      ["F#3", 185.0],
+      ["A3", 220.0],
+      ["D4", 293.66],
+    ],
+  },
+  opene: {
+    label: "Guitar · open E",
+    group: "Guitar",
+    strings: [
+      ["E2", 82.41],
+      ["B2", 123.47],
+      ["E3", 164.81],
+      ["G#3", 207.65],
+      ["B3", 246.94],
+      ["E4", 329.63],
+    ],
+  },
+  dadgad: {
+    label: "Guitar · DADGAD",
+    group: "Guitar",
+    strings: [
+      ["D2", 73.42],
+      ["A2", 110.0],
+      ["D3", 146.83],
+      ["G3", 196.0],
+      ["A3", 220.0],
+      ["D4", 293.66],
+    ],
+  },
   bass: {
     label: "Bass · 4 string",
+    group: "Bass",
     strings: [
+      ["E1", 41.2],
+      ["A1", 55.0],
+      ["D2", 73.42],
+      ["G2", 98.0],
+    ],
+  },
+  bass5: {
+    label: "Bass · 5 string",
+    group: "Bass",
+    strings: [
+      ["B0", 30.87],
       ["E1", 41.2],
       ["A1", 55.0],
       ["D2", 73.42],
@@ -48,6 +147,7 @@ export const TUNINGS = {
   },
   ukulele: {
     label: "Ukulele · standard",
+    group: "Ukulele",
     strings: [
       ["G4", 392.0],
       ["C4", 261.63],
@@ -55,7 +155,38 @@ export const TUNINGS = {
       ["A4", 440.0],
     ],
   },
+  ukulelelow: {
+    label: "Ukulele · low G",
+    group: "Ukulele",
+    strings: [
+      ["G3", 196.0],
+      ["C4", 261.63],
+      ["E4", 329.63],
+      ["A4", 440.0],
+    ],
+  },
 };
+
+// The tuner works in MIDI, so string targets are converted once per reading.
+export function midiForFrequency(frequency) {
+  return 69 + 12 * Math.log2(frequency / 440);
+}
+
+/**
+ * Closest string to a measured pitch. Returns the string index, its name, its
+ * exact MIDI target and how many cents the player is away from it.
+ */
+export function nearestString(midiFloat, strings) {
+  let best = null;
+  strings.forEach(([name, hz], index) => {
+    const midi = midiForFrequency(hz);
+    const cents = (midiFloat - midi) * 100;
+    if (!best || Math.abs(cents) < Math.abs(best.cents)) {
+      best = { index, name, midi, cents };
+    }
+  });
+  return best;
+}
 
 export function midiToNote(midi) {
   const rounded = Math.round(midi);
@@ -162,6 +293,22 @@ export class Tuner {
     this.onError = null;
     this.refCtx = null;
     this.session = 0;
+    // Drum-style string targeting: "auto" follows the nearest string,
+    // "string" pins one string, "chromatic" ignores the tuning entirely.
+    this.mode = "auto";
+    this.strings = [];
+    this.stringIndex = -1;
+    this.currentString = null;
+  }
+
+  configure({ mode = this.mode, strings = this.strings, stringIndex = this.stringIndex } = {}) {
+    this.mode = mode;
+    this.strings = strings;
+    this.stringIndex = stringIndex;
+    this.currentString = null;
+    this.history = [];
+    this.stable = null;
+    this.pending = 0;
   }
 
   async start({ onResult, onError }) {
@@ -218,6 +365,7 @@ export class Tuner {
     this.history = [];
     this.stable = null;
     this.pending = 0;
+    this.currentString = null;
     this.lastEmit = 0;
     const loop = () => {
       if (!this.running) return;
@@ -236,9 +384,10 @@ export class Tuner {
 
   // Median of the last few readings, and two agreeing readings before the
   // note may change: stops the display jumping between neighbours/octaves.
-  pushReading({ frequency }) {
+  pushReading({ frequency, clarity }) {
     const note = noteFromFrequency(frequency);
     const midi = note.midi + note.cents / 100;
+    const confidence = Math.max(0, Math.min(1, 1 - (clarity ?? 0.15)));
     const now = performance.now();
     if (now - (this.lastReadingAt || 0) > 300) this.history = [];
     this.lastReadingAt = now;
@@ -260,7 +409,40 @@ export class Tuner {
     if (now - (this.lastEmit || 0) < 90) return;
     this.lastEmit = now;
     const smoothed = 440 * 2 ** ((median - 69) / 12);
-    this.onResult?.(noteFromFrequency(smoothed));
+    const reading = noteFromFrequency(smoothed);
+    reading.clarity = clarity ?? 0.15;
+
+    if (this.strings.length && this.mode !== "chromatic") {
+      const nearest = nearestString(median, this.strings);
+      let target = nearest;
+
+      if (this.mode === "string" && this.stringIndex >= 0 && this.stringIndex < this.strings.length) {
+        const [name, hz] = this.strings[this.stringIndex];
+        target = { index: this.stringIndex, name, midi: midiForFrequency(hz) };
+      } else if (this.currentString !== null) {
+        // Hysteresis: a string that is already ringing wins while the pitch is
+        // still within a semitone of it. That stops the display hopping
+        // between neighbours during vibrato.
+        const [name, hz] = this.strings[this.currentString] || [];
+        if (hz && Math.abs(median - midiForFrequency(hz)) <= 0.7) {
+          target = { index: this.currentString, name, midi: midiForFrequency(hz) };
+        }
+      }
+
+      if (this.mode === "auto") this.currentString = target.index;
+      const cents = Math.round((median - target.midi) * 100);
+      reading.stringIndex = target.index;
+      reading.stringName = target.name;
+      reading.stringMidi = target.midi;
+      reading.stringCents = cents;
+      reading.inTuneRatio = Math.max(0, Math.min(1, confidence * Math.max(0, 1 - Math.abs(cents) / 50)));
+      // Pinned to one string but the pitch clearly belongs to another one.
+      reading.wrongString =
+        this.mode === "string" && Math.abs(cents) > 120 && Math.abs(nearest.cents) <= 40 ? nearest.name : "";
+      reading.suggestedIndex = nearest.index;
+    }
+
+    this.onResult?.(reading);
   }
 
   markSilence() {
@@ -268,6 +450,7 @@ export class Tuner {
       this.history = [];
       this.stable = null;
       this.pending = 0;
+      this.currentString = null;
     }
   }
 
