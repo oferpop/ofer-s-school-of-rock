@@ -1,0 +1,6 @@
+# Put Caddy in front of the web service on a small VPS.
+# Replace tabforge.example.com and point DNS at the server.
+tabforge.example.com {
+    encode zstd gzip
+    reverse_proxy web:8000
+}

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b1119" />
+  <title>TabForge — audio to draft tab</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">TF</span>
+      <span class="brand-text"><strong>TabForge</strong><em>audio → draft tab</em></span>
+      <span class="badge badge-local">local</span>
+    </div>
+    <div class="userbox" id="userbox" hidden>
+      <span class="dim" id="who"></span>
+      <button class="btn ghost" id="logout" type="button">Log out</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="auth-view">
+      <div class="hero">
+        <p class="kicker">Invite-only workspace</p>
+        <h1>Turn a recording into a draft tab.</h1>
+        <p class="lede">
+          Upload audio you own or have permission to transcribe. The server runs
+          note detection in the background and saves an
+          <strong>auto-generated draft</strong> to your private library.
+        </p>
+        <p class="notice">
+          No YouTube or Spotify downloads. A YouTube link is stored only as a
+          reference; the audio must be a file you provide.
+        </p>
+      </div>
+
+      <div class="auth-grid">
+        <form class="card form" id="login-form">
+          <h2>Log in</h2>
+          <label>Username
+            <input name="username" autocomplete="username" required />
+          </label>
+          <label>Password
+            <input name="password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="btn primary" type="submit">Log in</button>
+          <p class="hint">Students need an invite code to create an account.</p>
+        </form>
+
+        <form class="card form" id="signup-form">
+          <h2>Create an account</h2>
+          <label>Invite code
+            <input name="invite" placeholder="TF-XXXXX-XXXXX" autocomplete="off" required />
+          </label>
+          <label>Username
+            <input name="username" autocomplete="username" minlength="3" maxlength="32" required />
+          </label>
+          <label>Password
+            <input name="password" type="password" minlength="8" autocomplete="new-password" required />
+          </label>
+          <button class="btn primary" type="submit">Join</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="app-view" hidden>
+      <div class="app-head">
+        <div>
+          <p class="kicker">Workspace</p>
+          <h1>Draft library</h1>
+        </div>
+        <p class="dim" id="limit-note"></p>
+      </div>
+
+      <div class="workspace">
+        <form class="card form upload-card" id="upload-form">
+          <h2>New transcription</h2>
+          <label class="file-drop" id="file-drop">
+            <input name="audio" id="audio-input" type="file"
+                   accept=".mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,audio/*" required />
+            <span class="file-title" id="file-title">Choose an audio file</span>
+            <span class="hint">mp3, wav, m4a, aac, flac, ogg or opus · max 30 MB</span>
+          </label>
+          <div class="field-row">
+            <label>Title
+              <input name="title" maxlength="160" placeholder="Optional" />
+            </label>
+            <label>Artist
+              <input name="artist" maxlength="160" placeholder="Optional" />
+            </label>
+          </div>
+          <label>YouTube reference <span class="dim">(optional, metadata only)</span>
+            <input name="youtube_url" type="url" placeholder="https://youtu.be/…" />
+          </label>
+          <p class="notice small">
+            The link is saved for attribution only. Audio is never downloaded
+            from YouTube.
+          </p>
+          <button class="btn primary" type="submit" id="upload-btn">Start transcription</button>
+        </form>
+
+        <section class="card status-card" id="status-card" hidden>
+          <div class="status-head">
+            <h2>Processing</h2>
+            <span class="badge" id="job-badge">Queued</span>
+          </div>
+          <p class="status-stage" id="job-stage" aria-live="polite">Waiting for the worker…</p>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="progress">
+            <span id="progress-fill"></span>
+          </div>
+          <p class="dim" id="job-meta"></p>
+          <p class="error" id="job-error" hidden></p>
+          <button class="btn" id="retry-btn" type="button" hidden>Retry</button>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="section-head">
+          <h2>Library</h2>
+          <button class="btn ghost" id="refresh" type="button">Refresh</button>
+        </div>
+        <div id="songs" class="songs"></div>
+        <p class="empty" id="empty" hidden>No drafts yet. Upload a recording to get started.</p>
+      </section>
+
+      <section class="card detail" id="detail-card" hidden>
+        <div class="section-head">
+          <div>
+            <h2 id="detail-title"></h2>
+            <p class="dim" id="detail-meta"></p>
+          </div>
+          <button class="btn ghost" id="detail-close" type="button">Close</button>
+        </div>
+        <div class="detail-actions">
+          <a class="btn ghost" id="detail-source" target="_blank" rel="noopener noreferrer" hidden>Open reference</a>
+          <button class="btn" id="detail-approve" type="button" hidden>Approve draft</button>
+          <button class="btn danger" id="detail-delete" type="button">Delete</button>
+        </div>
+        <pre id="detail-body"></pre>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -383,3 +383,12 @@ below that.
   beams or tuplet brackets are drawn yet
 
 
+
+## Audio-to-tab service (local, Phase 1)
+
+`transcriber/` contains an invite-only FastAPI service for uploading audio you
+own, running a background transcription job and saving an auto-generated draft
+tab to a private library. Phase 1 uses a mock worker; Basic Pitch is connected
+in the next phase. It never downloads YouTube or Spotify audio.
+
+See `transcriber/README.md` for local setup, Docker, limits and the API.

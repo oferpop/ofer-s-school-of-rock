@@ -7,3 +7,12 @@ Thumbs.db
 
 # Local accounts database
 /data/
+
+# TabForge local service
+/transcriber/data/
+/transcriber/.venv/
+/transcriber/.env
+__pycache__/
+*.pyc
+
+.pytest_cache/
