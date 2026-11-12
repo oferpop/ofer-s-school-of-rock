@@ -952,6 +952,15 @@ input {
   stroke-width: 1.4;
 }
 
+.score-note {
+  cursor: pointer;
+}
+
+.score-note:hover .score-head {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
 .score-note.is-active .score-head {
   fill: var(--accent);
   stroke: var(--accent);
@@ -3119,7 +3128,16 @@ a.tab-row:hover {
     fill: #111;
     color: #111;
   }
-  .score-note.is-active .score-head {
+  .score-note {
+  cursor: pointer;
+}
+
+.score-note:hover .score-head {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+.score-note.is-active .score-head {
     fill: #111;
     stroke: #111;
   }

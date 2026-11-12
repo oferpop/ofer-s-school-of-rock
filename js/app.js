@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112ad";
+import { songs, byId, versionsOf } from "./data.js?v=20261112af";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112ad";
+} from "./chords.js?v=20261112af";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112ad";
+} from "./pro.js?v=20261112af";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112ad";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ad";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ad";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ad";
-import { renderStaff } from "./staff.js?v=20261112ad";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ad";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ad";
+} from "./auth.js?v=20261112af";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112af";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112af";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112af";
+import { renderStaff } from "./staff.js?v=20261112af";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112af";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112af";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -117,6 +117,7 @@ const playerState = {
   bpm: Number(localStorage.getItem("osr.player.bpm")) || 100,
   countIn: localStorage.getItem("osr.player.countin") !== "off",
   loop: localStorage.getItem("osr.player.loop") === "on",
+  click: localStorage.getItem("osr.player.click") === "on",
   status: "stopped",
   parsed: null,
   songId: null,
@@ -1390,6 +1391,7 @@ function playerBar(song = null) {
         <button class="pill sq" id="player-bpm-up" aria-label="Faster">+</button>
       </div>
       <button class="pill ${playerState.countIn ? "is-on" : ""}" id="player-countin" aria-pressed="${playerState.countIn}">Count-in</button>
+      <button class="pill ${playerState.click ? "is-on" : ""}" id="player-click" aria-pressed="${playerState.click}" title="Metronome click on every beat">Click</button>
       <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
       <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
       <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
@@ -1852,12 +1854,14 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
   }
 
   tabPlayer.load(parsed, { bpm: playerState.bpm });
+  tabPlayer.click = playerState.click;
   tabPlayer.position = from;
   tabPlayer.loopStart = playerState.loop ? playerState.loopStart : 0;
   tabPlayer.loopEnd = playerState.loop ? playerState.loopEnd : 0;
   const started = await tabPlayer.play({
     from,
     loop: playerState.loop,
+    click: playerState.click,
     onLine: highlightRange,
     onState: (status) => {
       if (status === "ended" || status === "stopped" || status === "paused") {
@@ -1887,7 +1891,7 @@ async function togglePlayer(song) {
     stopTicker();
     playerState.status = "paused";
   } else if (playerState.status === "paused") {
-    await tabPlayer.resume({ loop: playerState.loop });
+    await tabPlayer.resume({ loop: playerState.loop, click: playerState.click });
     playerState.status = "playing";
     startTicker();
   } else {
@@ -1924,6 +1928,17 @@ function wirePlayer(song) {
     countButton.classList.toggle("is-on", playerState.countIn);
     countButton.setAttribute("aria-pressed", String(playerState.countIn));
   });
+
+  const clickButton = document.getElementById("player-click");
+  if (clickButton) {
+    clickButton.addEventListener("click", () => {
+      playerState.click = !playerState.click;
+      localStorage.setItem("osr.player.click", playerState.click ? "on" : "off");
+      clickButton.classList.toggle("is-on", playerState.click);
+      clickButton.setAttribute("aria-pressed", String(playerState.click));
+      if (playerState.status === "playing") seekPlayer(song, tabPlayer.elapsed());
+    });
+  }
 
   const loopButton = document.getElementById("player-loop");
   loopButton.addEventListener("click", () => {
@@ -2030,6 +2045,17 @@ function wirePlayer(song) {
       const next = parsed.events.find((item) => item.lines[0] >= index);
       const target = next || parsed.events[parsed.events.length - 1];
       if (target) seekPlayer(song, target.time);
+    });
+  }
+
+  const scoreSheet = document.querySelector(".score-sheet");
+  if (scoreSheet) {
+    scoreSheet.addEventListener("click", (event) => {
+      const note = event.target.closest(".score-note");
+      if (!note) return;
+      const quarters = Number(note.dataset.start);
+      if (!Number.isFinite(quarters)) return;
+      seekPlayer(song, quarters * (60 / Math.max(20, playerState.bpm)));
     });
   }
 

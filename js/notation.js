@@ -577,7 +577,14 @@ export function notationToParsed(notation, { bpm = 120, transpose = 0 } = {}) {
   });
   const last = events[events.length - 1];
   const duration = last ? last.time + last.duration : notation.duration * beat;
-  return { events, duration: Math.max(duration, notation.duration * beat), kind: "score", step };
+  return {
+    events,
+    duration: Math.max(duration, notation.duration * beat),
+    kind: "score",
+    step,
+    beats: notation.timeSignature?.beats || 4,
+    beatType: notation.timeSignature?.beatType || 4,
+  };
 }
 
 // --- score drawing ------------------------------------------------------

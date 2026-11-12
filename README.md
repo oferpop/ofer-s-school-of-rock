@@ -62,6 +62,11 @@ The app also runs on any static host with **guest mode only**: without
 - **Save** to My tabs (localStorage), **Export .txt**, **Print / PDF**
 - **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
+- **Click** — a metronome click on every beat while the player runs, accented
+  on the bar's first beat and aligned with the score/tab tempo. Toggle it from
+  the player bar; the choice is remembered
+- Click any note in an imported score to seek the player to that note (and
+  start playing from there); tab/tab-line clicks already do the same
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
   chord lines one bar each, with synthesized plucks, count-in and loop. In a
   mixed sheet each `[section]` keeps its place: a section with tablature plays
@@ -343,9 +348,9 @@ below that.
   and the score is drawn as a real staff: treble or bass clef, grand staff for
   piano-style parts, key and time signatures, noteheads with stems and flags,
   dotted notes, rests, accidentals and ledger lines
-- The player reuses the tab engine: count-in, tempo, A–B loop, speed and Follow
-  all work. The current note/chord is highlighted and its system scrolls into
-  view while the score plays
+- The player reuses the tab engine: count-in, tempo, A–B loop, speed, Click and
+  Follow all work. The current note/chord is highlighted and its system scrolls
+  into view while the score plays; clicking a note seeks and plays from it
 - Notes that share an onset become a chord; ties are sustained instead of being
   re-attacked (a stop tie extends the previous note)
 - MIDI: tempo, time signature, track name and all melodic channels (percussion

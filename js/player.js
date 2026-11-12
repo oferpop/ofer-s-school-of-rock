@@ -8,8 +8,8 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112ad";
-import { notationToParsed } from "./notation.js?v=20261112ad";
+} from "./chords.js?v=20261112af";
+import { notationToParsed } from "./notation.js?v=20261112af";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -494,6 +494,8 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
     duration,
     kind: tabBlocks.length ? "tab" : "chords",
     step,
+    beats: 4,
+    beatType: 4,
   };
 }
 
@@ -581,6 +583,7 @@ export class TabPlayer {
     this.startPosition = 0;
     this.loopStart = 0;
     this.loopEnd = 0;
+    this.click = false;
   }
 
   load(parsed, { bpm = 100 } = {}) {
@@ -590,7 +593,7 @@ export class TabPlayer {
     this.position = 0;
   }
 
-  async play({ from = this.position, onLine = null, onEvent = null, onEnd = null, onState = null, loop = false } = {}) {
+  async play({ from = this.position, onLine = null, onEvent = null, onEnd = null, onState = null, loop = false, click = this.click } = {}) {
     if (!this.parsed || !this.parsed.events.length) return false;
     this.stopTimers();
     const Ctor = window.AudioContext || window.webkitAudioContext;
@@ -610,6 +613,7 @@ export class TabPlayer {
     this.onEnd = onEnd;
     this.onState = onState;
     this.loop = loop;
+    this.click = Boolean(click);
     this.playing = true;
     this.paused = false;
     const rangeEnd = this.loop && this.loopEnd > this.loopStart ? Math.min(this.loopEnd, this.parsed.duration) : this.parsed.duration;
@@ -643,6 +647,8 @@ export class TabPlayer {
         );
       });
     }
+
+    if (this.click) this.scheduleClicks(startAt, offset, rangeEnd);
 
     const remaining = Math.max(0, rangeEnd - offset);
     this.scheduleEnd(remaining);
@@ -791,6 +797,36 @@ export class TabPlayer {
     this.timeouts.add(timeout);
   }
 
+  // Metronome click on every beat while the score or tab plays. The bar's
+  // first beat is accented; the grid is anchored at time zero.
+  scheduleClicks(startAt, offset, rangeEnd) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const beat = 60 / this.bpm;
+    const beatsPerBar = Math.max(1, Number(this.parsed?.beats) || 4);
+    const first = Math.ceil(offset / beat - 1e-6);
+    for (let index = first; index * beat < rangeEnd - 1e-4; index++) {
+      const when = startAt + index * beat - offset;
+      if (when < ctx.currentTime - 0.01) continue;
+      this.scheduleClick(when, index % beatsPerBar === 0);
+    }
+  }
+
+  scheduleClick(when, accent = false) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = accent ? 1600 : 1000;
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(accent ? 0.14 : 0.07, when + 0.002);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+    osc.connect(gain).connect(this.master);
+    osc.start(when);
+    osc.stop(when + 0.05);
+  }
+
   scheduleEnd(delay) {
     const timeout = setTimeout(() => {
       this.timeouts.delete(timeout);
@@ -803,6 +839,7 @@ export class TabPlayer {
           onEnd: this.onEnd,
           onState: this.onState,
           loop: true,
+          click: this.click,
         });
         restart();
         return;
@@ -840,6 +877,7 @@ export class TabPlayer {
       onEnd: this.onEnd,
       onState: this.onState,
       loop: options.loop ?? this.loop,
+      click: options.click ?? this.click,
     });
   }
 
