@@ -8,7 +8,8 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112x";
+} from "./chords.js?v=20261112ac";
+import { notationToParsed } from "./notation.js?v=20261112ac";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -210,6 +211,8 @@ function tabBlockAt(lines, start) {
  * note). Otherwise the chord lines are played, one bar per chord.
  */
 export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simplify = false } = {}) {
+  // Imported sheet music is already structured; no text parsing needed.
+  if (song.notation) return notationToParsed(song.notation, { bpm });
   // Some publishers use en/em dashes inside tab rows.
   const lines = song.body.replace(/[\u2013\u2014]/g, "-").split("\n");
   const beat = 60 / bpm;

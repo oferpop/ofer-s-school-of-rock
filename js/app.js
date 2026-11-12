@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112x";
+import { songs, byId, versionsOf } from "./data.js?v=20261112ac";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112x";
+} from "./chords.js?v=20261112ac";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112x";
+} from "./pro.js?v=20261112ac";
 
 import {
   probe,
@@ -38,12 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112x";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112x";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112x";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112x";
-import { renderStaff } from "./staff.js?v=20261112x";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112x";
+} from "./auth.js?v=20261112ac";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ac";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ac";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ac";
+import { renderStaff } from "./staff.js?v=20261112ac";
+import { parseMusicXml, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ac";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ac";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -355,7 +356,7 @@ function filteredSongs() {
   return list;
 }
 
-const TYPE_LABEL = { chords: "Chords", tabs: "Tab", ukulele: "Ukulele", bass: "Bass" };
+const TYPE_LABEL = { chords: "Chords", tabs: "Tab", ukulele: "Ukulele", bass: "Bass", notation: "Score" };
 
 function songCard(song) {
   const isSaved = state.saved.has(song.id);
@@ -371,7 +372,11 @@ function songCard(song) {
         <ul class="meta">
           ${
             isImported(song)
-              ? `<li class="dim">${song.body.split("\n").length} lines</li><li class="dim">Key ${esc(song.key)}</li>`
+              ? song.notation
+                ? `<li class="dim">${scoreMeta(song.notation).notes} notes</li><li class="dim">Key ${esc(
+                    song.key,
+                  )}</li>`
+                : `<li class="dim">${song.body.split("\n").length} lines</li><li class="dim">Key ${esc(song.key)}</li>`
               : `<li><span class="star">★</span> ${song.rating.toFixed(1)} <span class="dim">(${fmt(song.votes)})</span></li>
           <li class="dim">${fmt(song.views)} views</li>
           <li class="dim">Key ${esc(song.key)}</li>
@@ -425,7 +430,7 @@ function featuredBlock() {
 
 function exploreView() {
   const list = filteredSongs();
-  const types = ["all", "chords", "tabs", "ukulele", "bass"];
+  const types = ["all", "chords", "tabs", "notation", "ukulele", "bass"];
   const listMode = state.layout === "list";
   return `
     <main class="ws">
@@ -548,11 +553,13 @@ function songTable(list) {
 // --- sheet --------------------------------------------------------------
 
 function hasTabBlocks(song) {
+  if (song.notation) return false;
   const lines = song.body.split("\n");
   return lines.some((_, index) => tabBlockEnd(lines, index) !== -1);
 }
 
 function renderSheet(song, maxLines = 0, capo = 0) {
+  if (song.notation) return renderScore(song.notation, { bpm: playerState.bpm });
   const allLines = song.body.split("\n");
   const lines = maxLines ? allLines.slice(0, maxLines) : allLines;
   const chordTokens = chordTokensByLine(song.body);
@@ -853,6 +860,35 @@ function songView(id) {
   // Each song carries its own tempo: load it for the player and metronome.
   const songBpm = clampBpm(Number(state.tempos[song.id] ?? song.bpm) || 100);
   const capo = clampCapo(state.capos[song.id]);
+  const score = song.notation ? scoreMeta(song.notation) : null;
+  const editTools = score
+    ? ""
+    : `
+          <button class="pill ${state.simplify ? "is-on" : ""}" id="simplify" aria-pressed="${state.simplify}">Simplify</button>
+          <div class="pill-group" role="group" aria-label="Transpose">
+            <button class="pill sq" id="down" aria-label="Transpose down">−</button>
+            <span class="pill sq value" title="Semitones">${state.transpose > 0 ? "+" : ""}${state.transpose}</span>
+            <button class="pill sq" id="up" aria-label="Transpose up">+</button>
+          </div>
+          <button class="pill ${state.flats ? "is-on" : ""}" id="flats" aria-pressed="${state.flats}">Use flats</button>
+          <div class="pill-group" role="group" aria-label="Text size">
+            <button class="pill sq" id="font-down" aria-label="Smaller text">A−</button>
+            <button class="pill sq" id="font-up" aria-label="Larger text">A+</button>
+          </div>
+          ${
+            hasTabBlocks(song)
+              ? `<div class="pill-group" role="group" aria-label="Display mode">
+                   ${["tab", "notes", "both"]
+                     .map(
+                       (mode) =>
+                         `<button class="pill sq display-btn ${state.display === mode ? "is-on" : ""}" data-display="${mode}">${
+                           mode === "tab" ? "Tab" : mode === "notes" ? "Notes" : "Both"
+                         }</button>`,
+                     )
+                     .join("")}
+                 </div>`
+              : ""
+          }`;
   if (playerState.tempoSongId !== song.id || playerState.bpm !== songBpm) {
     playerState.tempoSongId = song.id;
     playerState.bpm = songBpm;
@@ -903,9 +939,9 @@ function songView(id) {
         <div class="rail-note">
           ${
             importedSong
-              ? `<strong>Imported tab</strong>
+              ? `<strong>${score ? "Imported score" : "Imported tab"}</strong>
                  <p>Stored in this browser only — not part of the catalog in the repo.</p>
-                 <button class="pill danger" id="delete-import">Delete this tab</button>`
+                 <button class="pill danger" id="delete-import">Delete this ${score ? "score" : "tab"}</button>`
               : `<strong>About the author</strong>
                  <p>${esc(song.author)} — ${fmt(song.saves)} saves, ${fmt(song.comments)} comments.</p>`
           }
@@ -916,13 +952,19 @@ function songView(id) {
         <h1 class="song-title">${esc(song.title)} ${TYPE_LABEL[song.type] || "Tab"} <span>by</span> ${esc(song.artist)}</h1>
         ${
           importedSong
-            ? `<p class="stats">Imported on this device · ${song.body.split("\n").length} lines</p>`
+            ? `<p class="stats">${
+                score
+                  ? `Imported score · ${score.notes} notes · ${score.measures} measures`
+                  : `Imported on this device · ${song.body.split("\n").length} lines`
+              }</p>`
             : `<p class="stats">${fmt(song.views)} views · ${fmt(song.saves)} saves · ${fmt(song.comments)} comments</p>`
         }
         <p class="byline">
           ${
             importedSong
-              ? `Pasted into this browser · <span class="badge badge-import">Imported</span>`
+              ? `${
+                  score ? "Imported from a score file" : "Pasted into this browser"
+                } · <span class="badge badge-import">Imported</span>`
               : `Author: ${esc(song.author)} · <span class="difficulty-${song.difficulty}">${song.difficulty}</span>
           · <span class="star">★</span> ${song.rating.toFixed(1)}`
           }
@@ -951,33 +993,13 @@ function songView(id) {
             <span class="ico">${state.playing ? "❚❚" : "▶"}</span> Autoscroll
           </button>
           <button class="pill" id="speed">Speed: ${state.speed.toFixed(1)}</button>
-          <button class="pill ${state.simplify ? "is-on" : ""}" id="simplify" aria-pressed="${state.simplify}">Simplify</button>
-          <div class="pill-group" role="group" aria-label="Transpose">
-            <button class="pill sq" id="down" aria-label="Transpose down">−</button>
-            <span class="pill sq value" title="Semitones">${state.transpose > 0 ? "+" : ""}${state.transpose}</span>
-            <button class="pill sq" id="up" aria-label="Transpose up">+</button>
-          </div>
-          <button class="pill ${state.flats ? "is-on" : ""}" id="flats" aria-pressed="${state.flats}">Use flats</button>
-          <div class="pill-group" role="group" aria-label="Text size">
-            <button class="pill sq" id="font-down" aria-label="Smaller text">A−</button>
-            <button class="pill sq" id="font-up" aria-label="Larger text">A+</button>
-          </div>
-          ${
-            hasTabBlocks(song)
-              ? `<div class="pill-group" role="group" aria-label="Display mode">
-                   ${["tab", "notes", "both"]
-                     .map(
-                       (mode) =>
-                         `<button class="pill sq display-btn ${state.display === mode ? "is-on" : ""}" data-display="${mode}">${
-                           mode === "tab" ? "Tab" : mode === "notes" ? "Notes" : "Both"
-                         }</button>`,
-                     )
-                     .join("")}
-                 </div>`
-              : ""
-          }
+          ${editTools}
           <button class="pill ${isSaved ? "is-on" : ""}" id="save" aria-pressed="${isSaved}">${isSaved ? "Saved" : "Save"}</button>
-          <button class="pill ${state.showVideo ? "is-on" : ""}" id="video-toggle" aria-pressed="${state.showVideo}">Video</button>
+          ${
+            score
+              ? ""
+              : `<button class="pill ${state.showVideo ? "is-on" : ""}" id="video-toggle" aria-pressed="${state.showVideo}">Video</button>`
+          }
           <form class="add-list" id="add-list-form">
             <select id="list-select" name="list" aria-label="Add to playlist">
               <option value="">Add to playlist…</option>
@@ -993,10 +1015,10 @@ function songView(id) {
             <input name="new" placeholder="or new playlist" aria-label="New playlist name" maxlength="60" />
             <button class="pill" type="submit">Add</button>
           </form>
-          <button class="pill" id="export-tab">Export .txt</button>
+          ${score ? "" : `<button class="pill" id="export-tab">Export .txt</button>`}
           <button class="pill" id="print">Print / PDF</button>
           ${
-            importedSong
+            importedSong || score
               ? ""
               : `<a class="pill" href="#/import?title=${encodeURIComponent(song.title)}&artist=${encodeURIComponent(
                   song.artist,
@@ -1004,7 +1026,16 @@ function songView(id) {
           }
         </div>
 
-        <p class="tab-meta">Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span>
+        <p class="tab-meta">${
+          score
+            ? `Score <span>·</span> Key: ${esc(score.key || "—")} <span>·</span> ${esc(score.time)} <span>·</span> ${
+                score.staves === 2
+                  ? "Grand staff"
+                  : score.clef === "bass"
+                    ? "Bass staff"
+                    : "Treble staff"
+              }`
+            : `Tuning: ${esc(song.tuning)} <span>·</span> Key: ${esc(transposeKey(song.key))} <span>·</span>
           <span class="capo-edit" title="${esc(song.capo)}">Capo
             <button class="pill sq capo-step" id="capo-down" aria-label="Capo down" ${
               capo <= 0 ? "disabled" : ""
@@ -1013,7 +1044,8 @@ function songView(id) {
             <button class="pill sq capo-step" id="capo-up" aria-label="Capo up" ${
               capo >= 9 ? "disabled" : ""
             }>+</button>
-          </span> <span>·</span> <label class="tempo-edit">Tempo
+          </span>`
+        } <span>·</span> <label class="tempo-edit">Tempo
           <input id="tempo-input" type="number" min="40" max="240" step="1" value="${songBpm}" aria-label="Song tempo in BPM" /> BPM</label>${
           song.youtube
             ? ` <span>·</span> <a class="youtube-link" href="https://www.youtube.com/watch?v=${esc(
@@ -1046,13 +1078,13 @@ function songView(id) {
           </div>
         </div>
 
-        ${playerBar()}
+        ${playerBar(song)}
 
         ${videoPanel(song)}
 
-        <div class="sheet-wrap">
+        <div class="sheet-wrap${score ? " score-only" : ""}">
           ${renderSheet(song, 0, capo)}
-          ${chordPanel(song, capo)}
+          ${score ? "" : chordPanel(song, capo)}
         </div>
 
         ${commentsSection()}
@@ -1338,16 +1370,17 @@ const clock = (seconds) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
-function playerBar() {
+function playerBar(song = null) {
+  const score = Boolean(song?.notation);
   const time = playerState.parsed ? clock(tabPlayer.position) : "0:00";
   const total = playerState.parsed ? clock(playerState.parsed.duration) : "0:00";
   const playing = playerState.status === "playing";
   return `
-    <div class="player-bar" id="player-bar">
+    <div class="player-bar" id="player-bar" data-score="${score ? "1" : "0"}">
       <span class="pb-label">Play</span>
       <button class="pill primary" id="player-toggle" aria-pressed="${playing}">
         <span class="ico">${playing ? "❚❚" : "▶"}</span> ${
-          playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play the tab"
+          playing ? "Pause" : playerState.status === "paused" ? "Resume" : score ? "Play the score" : "Play the tab"
         }
       </button>
       <button class="pill" id="player-stop">Stop</button>
@@ -1363,7 +1396,13 @@ function playerBar() {
       <button class="pill ${followState.active ? "is-on" : ""}" id="player-follow" aria-pressed="${followState.active}" title="Listen to you play and follow the tab">Follow</button>
       <span class="player-time dim" id="player-time">${time} / ${total}</span>
       <span class="player-kind dim" id="player-kind">${
-        playerState.parsed ? (playerState.parsed.kind === "tab" ? "Tablature" : "Chords") : ""
+        playerState.parsed
+          ? playerState.parsed.kind === "tab"
+            ? "Tablature"
+            : playerState.parsed.kind === "score"
+              ? "Score"
+              : "Chords"
+          : ""
       }</span>
       <div class="player-progress" id="player-progress" role="slider" aria-label="Playback position"
            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="0">
@@ -1387,8 +1426,9 @@ function updatePlayerBar() {
   const toggle = document.getElementById("player-toggle");
   if (toggle) {
     const playing = playerState.status === "playing";
+    const score = bar.dataset.score === "1" || playerState.parsed?.kind === "score";
     toggle.innerHTML = `<span class="ico">${playing ? "❚❚" : "▶"}</span> ${
-      playing ? "Pause" : playerState.status === "paused" ? "Resume" : "Play the tab"
+      playing ? "Pause" : playerState.status === "paused" ? "Resume" : score ? "Play the score" : "Play the tab"
     }`;
     toggle.setAttribute("aria-pressed", String(playing));
   }
@@ -1422,7 +1462,12 @@ function updatePlayerBar() {
 
   const kind = document.getElementById("player-kind");
   if (kind && playerState.parsed) {
-    kind.textContent = playerState.parsed.kind === "tab" ? "Tablature" : "Chords";
+    kind.textContent =
+      playerState.parsed.kind === "tab"
+        ? "Tablature"
+        : playerState.parsed.kind === "score"
+          ? "Score"
+          : "Chords";
   }
 }
 
@@ -1637,6 +1682,10 @@ function visualIndex(text, column) {
 // Place the playhead from a time, not from the last event, so it keeps moving
 // through rests and long notes and always agrees with the progress bar.
 function paintPlayheadAtTime(seconds) {
+  if (playerState.parsed?.kind === "score") {
+    paintScoreAt(document.querySelector(".score-sheet"), seconds, playerState.bpm);
+    return;
+  }
   const blocks = playerState.blocks;
   if (!blocks) return;
   let key = null;
@@ -1667,6 +1716,7 @@ function paintPlayheadAtTime(seconds) {
 }
 
 function clearPlayhead() {
+  document.querySelectorAll(".score-note.is-active").forEach((note) => note.classList.remove("is-active"));
   document.querySelectorAll(".tab-playhead").forEach((marker) => {
     marker.hidden = true;
     marker.style.left = "0px";
@@ -2598,8 +2648,18 @@ function importView() {
   return `
     <main class="ws">
       <section class="hero">
-        <h1>Import a tab</h1>
-        <p class="hero-sub">Paste a chord sheet or ASCII tab and read it here — transpose, diagrams, autoscroll and print all work.</p>
+        <h1>Import music</h1>
+        <p class="hero-sub">Load a MusicXML or MIDI score, or paste a chord sheet / ASCII tab. Everything runs in this browser — transpose, playback, autoscroll and print all work.</p>
+      </section>
+
+      <section class="score-import">
+        <h2>Sheet music</h2>
+        <p class="dim">Import MusicXML (<code>.musicxml</code> / <code>.xml</code>) or MIDI (<code>.mid</code> / <code>.midi</code>). The score is drawn, played note by note and followed while it plays. Compressed <code>.mxl</code> is not supported — export uncompressed MusicXML. Images and PDFs are not transcribed.</p>
+        <div class="tr-row">
+          <label class="pill file-pill">Load score<input id="score-file" type="file"
+            accept=".xml,.musicxml,.mid,.midi,audio/midi,application/xml,text/xml" class="sr-only" /></label>
+          <span class="dim" id="score-status">No file loaded.</span>
+        </div>
       </section>
 
       <form class="import-form" id="import-form">
@@ -2860,32 +2920,32 @@ function wire() {
     render();
   });
 
-  document.getElementById("simplify").addEventListener("click", () => {
+  document.getElementById("simplify")?.addEventListener("click", () => {
     state.simplify = !state.simplify;
     render();
   });
 
-  document.getElementById("flats").addEventListener("click", () => {
+  document.getElementById("flats")?.addEventListener("click", () => {
     state.flats = !state.flats;
     render();
   });
 
-  document.getElementById("down").addEventListener("click", () => {
+  document.getElementById("down")?.addEventListener("click", () => {
     state.transpose = Math.max(-11, state.transpose - 1);
     render();
   });
 
-  document.getElementById("up").addEventListener("click", () => {
+  document.getElementById("up")?.addEventListener("click", () => {
     state.transpose = Math.min(11, state.transpose + 1);
     render();
   });
 
-  document.getElementById("font-down").addEventListener("click", () => {
+  document.getElementById("font-down")?.addEventListener("click", () => {
     state.fontScale = Math.max(0.8, Math.round((state.fontScale - 0.1) * 10) / 10);
     render();
   });
 
-  document.getElementById("font-up").addEventListener("click", () => {
+  document.getElementById("font-up")?.addEventListener("click", () => {
     state.fontScale = Math.min(1.8, Math.round((state.fontScale + 0.1) * 10) / 10);
     render();
   });
@@ -2904,7 +2964,7 @@ function wire() {
   document.getElementById("save").addEventListener("click", () => toggleSave(song.id));
   document.getElementById("print").addEventListener("click", () => window.print());
 
-  document.getElementById("video-toggle").addEventListener("click", () => {
+  document.getElementById("video-toggle")?.addEventListener("click", () => {
     state.showVideo = !state.showVideo;
     state.videoEditing = false;
     state.videoError = "";
@@ -3027,11 +3087,9 @@ function wire() {
   wireComments(song);
   wirePlayer(song);
 
-  document
-    .getElementById("export-tab")
-    .addEventListener("click", () =>
-      downloadText(`${slug(song.artist)}-${slug(song.title)}.txt`, tabText(song)),
-    );
+  document.getElementById("export-tab")?.addEventListener("click", () =>
+    downloadText(`${slug(song.artist)}-${slug(song.title)}.txt`, tabText(song)),
+  );
 
   const addList = document.getElementById("add-list-form");
   addList.addEventListener("submit", (e) => {
@@ -3617,6 +3675,54 @@ function detectTempo(text) {
 
 function wireImport() {
   const form = document.getElementById("import-form");
+
+  const scoreFile = document.getElementById("score-file");
+  if (scoreFile) {
+    scoreFile.addEventListener("change", async () => {
+      const chosen = scoreFile.files && scoreFile.files[0];
+      scoreFile.value = "";
+      if (!chosen) return;
+      const status = document.getElementById("score-status");
+      const name = chosen.name.replace(/\.[^.]+$/, "");
+      const extension = (chosen.name.split(".").pop() || "").toLowerCase();
+      if (status) status.textContent = `Reading ${chosen.name}…`;
+      try {
+        let notation;
+        if (extension === "xml" || extension === "musicxml") {
+          notation = parseMusicXml(await chosen.text(), name);
+        } else if (extension === "mid" || extension === "midi") {
+          notation = parseMidi(await chosen.arrayBuffer(), name);
+        } else {
+          throw new Error("Use a .musicxml/.xml score or a .mid/.midi file.");
+        }
+        const song = {
+          id: `imported-${Date.now().toString(36)}`,
+          imported: true,
+          title: notation.title || name || "Imported score",
+          artist: notation.composer || "Imported score",
+          type: "notation",
+          key: notation.key || "C",
+          tuning: "—",
+          capo: "—",
+          bpm: clampBpm(notation.bpm || 100),
+          difficulty: "intermediate",
+          body: "",
+          notation,
+        };
+        if (JSON.stringify(song).length > 1_200_000) {
+          throw new Error("That score is too large to keep in this browser (about 1.2 MB).");
+        }
+        imported = [song, ...imported];
+        persistImported();
+        state.query = "";
+        state.type = "all";
+        go(`#/song/${encodeURIComponent(song.id)}`);
+      } catch (error) {
+        if (status) status.textContent = `Could not read that score: ${error.message || error}`;
+      }
+    });
+  }
+
   if (!form) return;
 
   const bodyField = form.querySelector("[name=body]");

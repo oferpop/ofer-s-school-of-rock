@@ -2,8 +2,8 @@
 // No model download, no network: the same YIN detector as the tuner runs over
 // short frames, notes are grouped, quantised to a grid and mapped to strings.
 
-import { detectPitch, noteFromFrequency } from "./tuner.js?v=20261112x";
-import { tuningToMidi } from "./player.js?v=20261112x";
+import { detectPitch, noteFromFrequency } from "./tuner.js?v=20261112ac";
+import { tuningToMidi } from "./player.js?v=20261112ac";
 
 const STRING_NAMES = ["e", "B", "G", "D", "A", "E"];
 const MAX_FRET = 17;
