@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112k";
+import { songs, byId, versionsOf } from "./data.js?v=20261112l";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112k";
+} from "./chords.js?v=20261112l";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112k";
+} from "./pro.js?v=20261112l";
 
 import {
   probe,
@@ -38,12 +38,12 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112k";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112k";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112k";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112k";
-import { renderStaff } from "./staff.js?v=20261112k";
-import { detectNotes, notesToTab } from "./transcribe.js?v=20261112k";
+} from "./auth.js?v=20261112l";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112l";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112l";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112l";
+import { renderStaff } from "./staff.js?v=20261112l";
+import { detectNotes, detectNotesAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112l";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1936,7 +1936,8 @@ function transcribeView() {
           <button class="pill primary" id="tr-record">● Record from mic</button>
           <button class="pill danger" id="tr-stop" hidden>■ Stop</button>
         </div>
-        <p class="tr-status dim" id="tr-status">Ready.</p>
+        <div class="tr-progress" id="tr-progress" hidden><span id="tr-fill"></span></div>
+        <p class="tr-status dim"><span class="tr-spinner" id="tr-spinner" hidden></span><span id="tr-status">Ready.</span></p>
         <textarea id="tr-output" rows="14" spellcheck="false" placeholder="The generated tab appears here…"></textarea>
         <div class="tr-row">
           <button class="pill primary" id="tr-open">Open in reader</button>
@@ -1951,24 +1952,54 @@ function wireTranscribe() {
   if (!file) return;
   const status = document.getElementById("tr-status");
   const output = document.getElementById("tr-output");
+  const spinner = document.getElementById("tr-spinner");
+  const progress = document.getElementById("tr-progress");
+  const fill = document.getElementById("tr-fill");
+
+  const setBusy = (busy) => {
+    if (spinner) spinner.hidden = !busy;
+    if (progress && !busy) {
+      progress.hidden = true;
+      if (fill) fill.style.width = "0%";
+    }
+  };
 
   const tuningValue = () => String(document.getElementById("tr-tuning").value || "").trim() || "E A D G B E";
   const bpmValue = () => clampBpm(Number(document.getElementById("tr-bpm").value) || 100);
 
   const analyse = async (blob, label) => {
+    setBusy(true);
     status.textContent = `Decoding ${label}…`;
+    const startedAt = performance.now();
     try {
       const Ctor = window.AudioContext || window.webkitAudioContext;
       const ctx = new Ctor();
       const buffer = await ctx.decodeAudioData(await blob.arrayBuffer());
+      const samples = buffer.getChannelData(0);
       status.textContent = `Analysing ${buffer.duration.toFixed(1)}s…`;
-      await new Promise((resolve) => setTimeout(resolve, 30));
-      const notes = detectNotes(buffer.getChannelData(0), buffer.sampleRate);
+      if (progress) progress.hidden = false;
+
+      const notes = await detectNotesAsync(samples, buffer.sampleRate, {}, (fraction) => {
+        const percent = Math.round(fraction * 100);
+        if (fill) fill.style.width = `${percent}%`;
+        status.textContent = `Analysing… ${percent}% · ${((performance.now() - startedAt) / 1000).toFixed(1)}s`;
+      });
+
+      const tempo = estimateTempo(samples, buffer.sampleRate);
+      let tempoNote = "";
+      if (tempo.bpm >= 40 && tempo.confidence > 0.2) {
+        document.getElementById("tr-bpm").value = String(tempo.bpm);
+        tempoNote = ` · tempo ${tempo.bpm} BPM`;
+      }
+
       output.value = notesToTab(notes, { bpm: bpmValue(), tuning: tuningValue() });
-      status.textContent = `${notes.length} notes found in ${buffer.duration.toFixed(1)}s`;
+      const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+      status.textContent = `${notes.length} notes${tempoNote} · ${seconds}s`;
       ctx.close().catch(() => {});
     } catch (error) {
       status.textContent = `Could not decode that audio (${error.message || error.name}).`;
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -2002,7 +2033,11 @@ function wireTranscribe() {
       recorder.start();
       recordButton.hidden = true;
       stopButton.hidden = false;
-      status.textContent = "Recording… play your solo, then press Stop.";
+      const startedAt = performance.now();
+      const clock = setInterval(() => {
+        status.textContent = `Recording… ${((performance.now() - startedAt) / 1000).toFixed(1)}s — play your solo, then press Stop.`;
+      }, 200);
+      recorder.addEventListener("stop", () => clearInterval(clock), { once: true });
     } catch {
       status.textContent = "Microphone permission was blocked.";
     }
