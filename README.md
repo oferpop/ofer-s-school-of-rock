@@ -87,9 +87,13 @@ The app also runs on any static host with **guest mode only**: without
 - **Playhead** — a vertical marker follows the exact column being played, with a
   progress bar in the transport; click any point in the tab (or the bar) and
   playback jumps there and continues
-- **A–B loop** — with Loop on, drag across the tablature to select the phrase:
-  the range is drawn on the rows and on the progress bar and repeats until you
-  clear it; the A and B buttons drop boundaries at the playhead
+- **Click anywhere** — click a note, a line, an empty part of the sheet or the
+  score and the player seeks there and starts playing. Clicking outside an
+  active loop clears the loop so the click lands exactly where you asked
+- **A–B loop** — drag across the tablature, chord sheet or score with the mouse
+  to select a phrase; Loop turns on automatically, the range is drawn on the
+  rows/measures and on the progress bar, and it repeats until you clear it.
+  The A and B buttons still drop boundaries at the playhead
 - **Space** toggles play/pause anywhere on a song page (except while typing)
 - **Follow** — listens to the microphone (same tuner engine), shows the note the
   tab expects next, advances when you play it, counts wrong notes, and keeps the
@@ -352,7 +356,8 @@ below that.
   dotted notes, rests, accidentals and ledger lines
 - The player reuses the tab engine: count-in, tempo, A–B loop, speed, Click and
   Follow all work. The current note/chord is highlighted and its system scrolls
-  into view while the score plays; clicking a note seeks and plays from it
+  into view while the score plays; clicking anywhere on the score seeks and
+  plays from that point, and dragging selects an A–B loop
 - Notes that share an onset become a chord; ties are sustained instead of being
   re-attacked (a stop tie extends the previous note)
 - MIDI: tempo, time signature, track name and all melodic channels (percussion

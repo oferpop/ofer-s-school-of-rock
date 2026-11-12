@@ -8,8 +8,8 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112ai";
-import { notationToParsed } from "./notation.js?v=20261112ai";
+} from "./chords.js?v=20261112al";
+import { notationToParsed } from "./notation.js?v=20261112al";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,

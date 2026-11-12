@@ -952,6 +952,30 @@ input {
   stroke-width: 1.4;
 }
 
+.score-hit {
+  cursor: pointer;
+}
+
+.score-loop-layer {
+  pointer-events: none;
+}
+
+.score-loop-band {
+  fill: rgba(255, 210, 63, 0.14);
+  pointer-events: none;
+}
+
+.sheet.is-dragging,
+.score-sheet.is-dragging {
+  user-select: none;
+  cursor: ew-resize;
+}
+
+.sheet .line.is-loop {
+  background: rgba(255, 210, 63, 0.1);
+  border-radius: 4px;
+}
+
 .score-note {
   cursor: pointer;
 }
@@ -3146,7 +3170,31 @@ a.tab-row:hover {
     fill: #111;
     color: #111;
   }
-  .score-note {
+  .score-hit {
+  cursor: pointer;
+}
+
+.score-loop-layer {
+  pointer-events: none;
+}
+
+.score-loop-band {
+  fill: rgba(255, 210, 63, 0.14);
+  pointer-events: none;
+}
+
+.sheet.is-dragging,
+.score-sheet.is-dragging {
+  user-select: none;
+  cursor: ew-resize;
+}
+
+.sheet .line.is-loop {
+  background: rgba(255, 210, 63, 0.1);
+  border-radius: 4px;
+}
+
+.score-note {
   cursor: pointer;
 }
 

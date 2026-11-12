@@ -828,6 +828,13 @@ export function renderScore(notation, { width = 900, bpm = notation.bpm || 120 }
         measureX,
         fifths: measure.fifths ?? fifths,
       };
+      const hitTop = trebleTop - 12;
+      const hitBottom = (staves === 2 ? bassTop + 32 : trebleTop + 32) + 12;
+      svg += `<rect class="score-hit" x="${measureX}" y="${hitTop}" width="${measureWidth}" height="${
+        hitBottom - hitTop
+      }" fill="transparent" pointer-events="all" data-start="${measure.start}" data-duration="${
+        measure.duration
+      }" />`;
       svg += renderMeasureNotes(measure, measureNotes, geometry, measureWidth, bpm);
 
       // Bar lines, including one at the end of the system.
@@ -846,7 +853,7 @@ export function renderScore(notation, { width = 900, bpm = notation.bpm || 120 }
     svg += `</g>`;
   }
 
-  svg += `</svg>`;
+  svg += `<g class="score-loop-layer"></g></svg>`;
   return `<div class="score-sheet" data-score="1"><div class="score-heading"><strong>${esc(
     notation.title || "Untitled score",
   )}</strong>${

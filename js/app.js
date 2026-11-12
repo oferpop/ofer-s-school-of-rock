@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112ai";
+import { songs, byId, versionsOf } from "./data.js?v=20261112al";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112ai";
+} from "./chords.js?v=20261112al";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112ai";
+} from "./pro.js?v=20261112al";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112ai";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ai";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ai";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ai";
-import { renderStaff } from "./staff.js?v=20261112ai";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ai";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ai";
+} from "./auth.js?v=20261112al";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112al";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112al";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112al";
+import { renderStaff } from "./staff.js?v=20261112al";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112al";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112al";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -1754,6 +1754,96 @@ function timeAtPoint(song, block, lineEl, clientX) {
   return entry.start + column * entry.step;
 }
 
+function timeAtLinePoint(song, lineEl, clientX) {
+  const parsed = ensureParsed(song);
+  const index = Number(lineEl.dataset.line);
+  const events = parsed.events.filter((event) => event.lines[0] === index);
+  if (!events.length) {
+    const next = parsed.events.find((event) => event.lines[0] >= index);
+    if (next) return next.time;
+    const last = parsed.events[parsed.events.length - 1];
+    return last ? last.time : 0;
+  }
+  if (events.length === 1) return events[0].time;
+  const rect = lineEl.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(0.999, (clientX - rect.left) / Math.max(1, rect.width)));
+  return events[Math.min(events.length - 1, Math.floor(ratio * events.length))].time;
+}
+
+function timeAtScorePoint(event) {
+  const node = document.elementFromPoint(event.clientX, event.clientY) || event.target;
+  const bpm = Math.max(20, playerState.bpm || 100);
+  const note = node.closest?.(".score-note");
+  if (note && Number.isFinite(Number(note.dataset.start))) {
+    return Number(note.dataset.start) * (60 / bpm);
+  }
+  const svg = document.querySelector(".score-sheet .score-svg");
+  if (!svg) return null;
+  const box = svg.getBoundingClientRect();
+  if (event.clientY < box.top - 24 || event.clientY > box.bottom + 24) return null;
+  let hit = node.closest?.(".score-hit");
+  if (!hit) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const candidate of svg.querySelectorAll(".score-hit")) {
+      const rect = candidate.getBoundingClientRect();
+      const dx =
+        event.clientX < rect.left ? rect.left - event.clientX : event.clientX > rect.right ? event.clientX - rect.right : 0;
+      const dy =
+        event.clientY < rect.top ? rect.top - event.clientY : event.clientY > rect.bottom ? event.clientY - rect.bottom : 0;
+      const distance = dx * dx + dy * dy;
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = candidate;
+      }
+    }
+    hit = best;
+  }
+  if (!hit) return null;
+  const rect = hit.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(0.999, (event.clientX - rect.left) / Math.max(1, rect.width)));
+  const quarters = Number(hit.dataset.start) + ratio * Number(hit.dataset.duration);
+  return (Number.isFinite(quarters) ? quarters : 0) * (60 / bpm);
+}
+
+function timeAtTextSheetPoint(song, event) {
+  const node = document.elementFromPoint(event.clientX, event.clientY) || event.target;
+  ensureParsed(song);
+  const block = node.closest?.(".tab-block");
+  if (block) {
+    const row = node.closest(".line.tabline") || block.querySelector(".line.tabline");
+    if (row) {
+      const seconds = timeAtPoint(song, block, row, event.clientX);
+      if (seconds !== null) return seconds;
+    }
+  }
+  let line = node.closest?.(".line[data-line]");
+  if (!line) {
+    const sheetEl = document.querySelector(".sheet");
+    if (!sheetEl) return null;
+    let best = null;
+    let bestDistance = Infinity;
+    for (const candidate of sheetEl.querySelectorAll(".line[data-line]")) {
+      const rect = candidate.getBoundingClientRect();
+      const distance = Math.abs((rect.top + rect.bottom) / 2 - event.clientY);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = candidate;
+      }
+    }
+    line = best;
+  }
+  if (!line) return null;
+  return timeAtLinePoint(song, line, event.clientX);
+}
+
+function timeAtSheetPoint(song, event) {
+  const node = document.elementFromPoint(event.clientX, event.clientY) || event.target;
+  if (node.closest?.(".score-sheet")) return timeAtScorePoint(event);
+  if (node.closest?.(".sheet")) return timeAtTextSheetPoint(song, event);
+  return null;
+}
+
 async function seekPlayer(song, seconds, { autoplay = true } = {}) {
   const parsed = ensureParsed(song);
   let target = Math.max(0, Math.min(seconds, parsed.duration - 0.05));
@@ -1804,6 +1894,36 @@ function markLoopPoint(song, which) {
 }
 
 // Highlight the selected loop on the progress bar and across the tab rows.
+function drawScoreLoop() {
+  const svg = document.querySelector(".score-sheet .score-svg");
+  const layer = svg?.querySelector(".score-loop-layer");
+  if (!svg || !layer) return;
+  layer.innerHTML = "";
+  if (!playerState.loop || playerState.loopEnd <= playerState.loopStart + 0.05) return;
+  const bpm = Math.max(20, playerState.bpm || 100);
+  const quartersPerSecond = bpm / 60;
+  const a = playerState.loopStart * quartersPerSecond;
+  const b = playerState.loopEnd * quartersPerSecond;
+  svg.querySelectorAll(".score-hit").forEach((hit) => {
+    const start = Number(hit.dataset.start);
+    const duration = Number(hit.dataset.duration);
+    if (!(duration > 0)) return;
+    const from = Math.max(start, a);
+    const to = Math.min(start + duration, b);
+    if (!(to > from)) return;
+    const x = Number(hit.getAttribute("x"));
+    const width = Number(hit.getAttribute("width"));
+    const y = Number(hit.getAttribute("y"));
+    const height = Number(hit.getAttribute("height"));
+    const rx = x + ((from - start) / duration) * width;
+    const rw = Math.max(1, ((to - from) / duration) * width);
+    layer.insertAdjacentHTML(
+      "beforeend",
+      `<rect class="score-loop-band" x="${rx}" y="${y}" width="${rw}" height="${height}" />`,
+    );
+  });
+}
+
 function drawLoopRange() {
   const parsed = playerState.parsed;
   const active = parsed && playerState.loopEnd > playerState.loopStart + 0.05;
@@ -1839,6 +1959,17 @@ function drawLoopRange() {
     band.style.left = `${left}px`;
     band.style.width = `${Math.max(2, right - left)}px`;
   });
+
+  document.querySelectorAll(".sheet .line.is-loop").forEach((line) => line.classList.remove("is-loop"));
+  if (active && parsed?.kind === "chords") {
+    for (const event of parsed.events) {
+      if (event.time >= playerState.loopStart - 0.001 && event.time <= playerState.loopEnd + 0.001) {
+        document.querySelectorAll(`.sheet [data-line="${event.lines[0]}"]`).forEach((line) => line.classList.add("is-loop"));
+      }
+    }
+  }
+
+  drawScoreLoop();
 }
 
 async function startPlayer(song, { from = 0, fraction = null } = {}) {
@@ -2019,72 +2150,77 @@ function wirePlayer(song) {
     seekPlayer(song, Math.max(0, Math.min(duration - 0.05, position + step)));
   });
 
-  const sheet = document.querySelector(".sheet");
-  if (sheet) {
+  const content = document.querySelector(".score-sheet") || document.querySelector(".sheet");
+  if (content) {
     let drag = null;
-    let suppressClick = false;
 
-    sheet.addEventListener("pointerdown", (event) => {
-      if (!playerState.loop) return;
-      const block = event.target.closest(".tab-block");
-      const row = event.target.closest(".line.tabline");
-      if (!block || !row) return;
-      const time = timeAtPoint(song, block, row, event.clientX);
+    content.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      const time = timeAtSheetPoint(song, event);
       if (time === null) return;
-      drag = { block, row, start: time, x: event.clientX, moved: false };
+      drag = { start: time, x: event.clientX, y: event.clientY, moved: false, pointerId: event.pointerId };
+      try {
+        content.setPointerCapture(event.pointerId);
+      } catch {
+        /* pointer capture is optional */
+      }
     });
 
-    sheet.addEventListener("pointermove", (event) => {
+    content.addEventListener("pointermove", (event) => {
       if (!drag) return;
-      if (Math.abs(event.clientX - drag.x) > 4) drag.moved = true;
-      if (!drag.moved) return;
-      const time = timeAtPoint(song, drag.block, drag.row, event.clientX);
+      // On touch, a swipe is a scroll, not a loop selection. A tap still seeks.
+      if (event.pointerType === "touch") {
+        if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 8) {
+          drag = null;
+          content.classList.remove("is-dragging");
+        }
+        return;
+      }
+      if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 5) return;
+      drag.moved = true;
+      content.classList.add("is-dragging");
+      const time = timeAtSheetPoint(song, event);
       if (time === null) return;
       playerState.loopStart = Math.min(drag.start, time);
       playerState.loopEnd = Math.max(drag.start, time);
       playerState.loop = true;
       applyLoop(song);
+      drawLoopRange();
+      event.preventDefault();
     });
 
-    sheet.addEventListener("pointerup", () => {
+    const endDrag = (event) => {
       if (!drag) return;
-      const moved = drag.moved;
+      const { start, moved, pointerId } = drag;
       drag = null;
-      if (!moved) return;
-      suppressClick = true;
-      seekPlayer(song, playerState.loopStart);
-    });
-
-    sheet.addEventListener("click", (event) => {
-      if (suppressClick) {
-        suppressClick = false;
-        return;
+      content.classList.remove("is-dragging");
+      try {
+        content.releasePointerCapture(pointerId);
+      } catch {
+        /* capture may already be gone */
       }
-      const block = event.target.closest(".tab-block");
-      const row = event.target.closest(".line.tabline");
-      if (block && row) {
-        const seconds = timeAtPoint(song, block, row, event.clientX);
-        if (seconds !== null) seekPlayer(song, seconds);
-        return;
+      if (moved) {
+        if (playerState.loopEnd - playerState.loopStart < 0.2) {
+          playerState.loop = false;
+          applyLoop(song);
+          seekPlayer(song, start);
+        } else {
+          seekPlayer(song, playerState.loopStart);
+        }
+      } else {
+        // A plain click outside an existing loop should go exactly there.
+        if (playerState.loop && (start < playerState.loopStart || start > playerState.loopEnd)) {
+          playerState.loop = false;
+          applyLoop(song);
+        }
+        seekPlayer(song, start);
       }
-      const line = event.target.closest("[data-line]");
-      if (!line) return;
-      const parsed = ensureParsed(song);
-      const index = Number(line.dataset.line);
-      const next = parsed.events.find((item) => item.lines[0] >= index);
-      const target = next || parsed.events[parsed.events.length - 1];
-      if (target) seekPlayer(song, target.time);
-    });
-  }
-
-  const scoreSheet = document.querySelector(".score-sheet");
-  if (scoreSheet) {
-    scoreSheet.addEventListener("click", (event) => {
-      const note = event.target.closest(".score-note");
-      if (!note) return;
-      const quarters = Number(note.dataset.start);
-      if (!Number.isFinite(quarters)) return;
-      seekPlayer(song, quarters * (60 / Math.max(20, playerState.bpm)));
+      event.preventDefault();
+    };
+    content.addEventListener("pointerup", endDrag);
+    content.addEventListener("pointercancel", () => {
+      drag = null;
+      content.classList.remove("is-dragging");
     });
   }
 
