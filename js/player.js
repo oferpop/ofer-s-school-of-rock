@@ -8,8 +8,8 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112an";
-import { notationToParsed } from "./notation.js?v=20261112an";
+} from "./chords.js?v=20261112ap";
+import { notationToParsed } from "./notation.js?v=20261112ap";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -589,6 +589,10 @@ export class TabPlayer {
     this.click = false;
     this.clickVolume = 0.55;
     this.clickGain = null;
+    this.instrument = "guitar";
+    this.instrumentVolume = 0.8;
+    this.instrumentGain = null;
+    this.pianoWaveCache = null;
   }
 
   load(parsed, { bpm = 100 } = {}) {
@@ -607,6 +611,8 @@ export class TabPlayer {
     loop = false,
     click = this.click,
     clickVolume = this.clickVolume,
+    instrument = this.instrument,
+    instrumentVolume = this.instrumentVolume,
   } = {}) {
     if (!this.parsed || !this.parsed.events.length) return false;
     this.stopTimers();
@@ -624,6 +630,13 @@ export class TabPlayer {
     this.clickGain = this.ctx.createGain();
     this.clickGain.gain.value = this.clickVolume;
     this.clickGain.connect(this.master);
+    this.instrument = instrument === "piano" ? "piano" : "guitar";
+    const level = Number(instrumentVolume);
+    this.instrumentVolume = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0.8;
+    this.instrumentGain = this.ctx.createGain();
+    this.instrumentGain.gain.value = this.instrumentVolume;
+    this.instrumentGain.connect(this.master);
+    this.pianoWaveCache = null;
     this.buffers.clear();
 
     this.onLine = onLine;
@@ -694,12 +707,17 @@ export class TabPlayer {
     gain.gain.setValueAtTime(0.9, when);
     gain.gain.setValueAtTime(0.9, when + Math.min(0.1, length * 0.35));
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
-    source.connect(gain).connect(this.master);
+    source.connect(gain).connect(this.instrumentGain || this.master);
     source.start(when);
     source.stop(end + 0.02);
   }
 
   scheduleNote(midi, when, duration, bendTo = null, technique = null, releaseTo = null, vibrato = false, dead = false, slideOff = false, slideAt = null, slideDir = 1) {
+    if (this.instrument === "piano") {
+      if (dead) this.thump(when, duration);
+      else this.piano(midi, when, duration);
+      return;
+    }
     if (dead) {
       this.thump(when, duration);
       return;
@@ -715,6 +733,42 @@ export class TabPlayer {
       return;
     }
     this.pluck(midi, when, duration, bendTo, technique, releaseTo, vibrato, slideAt, slideDir);
+  }
+
+  pianoWave() {
+    if (this.pianoWaveCache) return this.pianoWaveCache;
+    const ctx = this.ctx;
+    if (!ctx) return null;
+    const amps = [0, 1, 0.42, 0.2, 0.1, 0.05, 0.025];
+    const real = new Float32Array(amps.length);
+    const imag = Float32Array.from(amps);
+    this.pianoWaveCache = ctx.createPeriodicWave(real, imag);
+    return this.pianoWaveCache;
+  }
+
+  // Piano tone: a bright harmonic wave through a fast attack and a long
+  // exponential decay. It is generated live, so no samples are downloaded.
+  piano(midi, when, duration) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const wave = this.pianoWave();
+    if (!wave) return;
+    const frequency = 440 * 2 ** ((midi - 69) / 12);
+    const gain = ctx.createGain();
+    const end = when + Math.max(0.45, Math.min(3.4, duration + 0.45));
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.exponentialRampToValueAtTime(0.18, when + 0.006);
+    gain.gain.exponentialRampToValueAtTime(0.0001, end);
+    for (const cents of [0, 2.5]) {
+      const osc = ctx.createOscillator();
+      osc.setPeriodicWave(wave);
+      osc.frequency.value = frequency;
+      osc.detune.value = cents;
+      osc.connect(gain);
+      osc.start(when);
+      osc.stop(end + 0.02);
+    }
+    gain.connect(this.instrumentGain || this.master);
   }
 
   // Dead note: a short muted thump with no pitch.
@@ -737,7 +791,7 @@ export class TabPlayer {
     const end = when + Math.max(0.05, Math.min(0.14, duration));
     gain.gain.setValueAtTime(0.35, when);
     gain.gain.exponentialRampToValueAtTime(0.0001, end);
-    source.connect(gain).connect(this.master);
+    source.connect(gain).connect(this.instrumentGain || this.master);
     source.start(when);
     source.stop(end + 0.01);
   }
@@ -801,7 +855,7 @@ export class TabPlayer {
       gain.gain.setValueAtTime(0.9, Math.max(when, end - 0.06));
       gain.gain.exponentialRampToValueAtTime(0.0001, end);
     }
-    source.connect(gain).connect(this.master);
+    source.connect(gain).connect(this.instrumentGain || this.master);
     source.start(when);
     source.stop(end + 0.02);
   }
@@ -827,6 +881,17 @@ export class TabPlayer {
       const when = startAt + index * beat - offset;
       if (when < ctx.currentTime - 0.01) continue;
       this.scheduleClick(when, index % beatsPerBar === 0);
+    }
+  }
+
+  setInstrument(name) {
+    this.instrument = name === "piano" ? "piano" : "guitar";
+  }
+
+  setInstrumentVolume(value) {
+    this.instrumentVolume = Math.max(0, Math.min(1, Number(value) || 0));
+    if (this.instrumentGain && this.ctx) {
+      this.instrumentGain.gain.setTargetAtTime(this.instrumentVolume, this.ctx.currentTime, 0.01);
     }
   }
 
@@ -868,6 +933,8 @@ export class TabPlayer {
           loop: true,
           click: this.click,
           clickVolume: this.clickVolume,
+          instrument: this.instrument,
+          instrumentVolume: this.instrumentVolume,
         });
         restart();
         return;
@@ -907,6 +974,8 @@ export class TabPlayer {
       loop: options.loop ?? this.loop,
       click: options.click ?? this.click,
       clickVolume: options.clickVolume ?? this.clickVolume,
+      instrument: options.instrument ?? this.instrument,
+      instrumentVolume: options.instrumentVolume ?? this.instrumentVolume,
     });
   }
 
@@ -924,6 +993,8 @@ export class TabPlayer {
     this.ctx = null;
     this.master = null;
     this.clickGain = null;
+    this.instrumentGain = null;
+    this.pianoWaveCache = null;
     this.buffers.clear();
     this.thumpBuffer = null;
   }

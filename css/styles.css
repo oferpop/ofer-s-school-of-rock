@@ -576,6 +576,22 @@ input {
   width: auto;
 }
 
+.rail-player .player-instrument,
+.rail-player .player-volume-wrap {
+  grid-column: 1 / -1;
+}
+
+.rail-player .player-instrument {
+  width: 100%;
+  justify-content: space-between;
+}
+
+.rail-player .player-instrument select {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+}
+
 .rail-player .player-time,
 .rail-player .player-kind {
   text-align: center;

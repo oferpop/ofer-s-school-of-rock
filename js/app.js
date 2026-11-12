@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112an";
+import { songs, byId, versionsOf } from "./data.js?v=20261112ap";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112an";
+} from "./chords.js?v=20261112ap";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112an";
+} from "./pro.js?v=20261112ap";
 
 import {
   probe,
@@ -38,13 +38,13 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112an";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112an";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112an";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112an";
-import { renderStaff } from "./staff.js?v=20261112an";
-import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112an";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112an";
+} from "./auth.js?v=20261112ap";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112ap";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112ap";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112ap";
+import { renderStaff } from "./staff.js?v=20261112ap";
+import { parseMusicXml, parseMxl, parseMidi, renderScore, paintScoreAt, scoreMeta } from "./notation.js?v=20261112ap";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112ap";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
@@ -61,6 +61,13 @@ function loadCapos() {
 
 function persistCapos(map) {
   localStorage.setItem(CAPOS_KEY, JSON.stringify(map));
+}
+
+function loadInstrumentVolume() {
+  const raw = localStorage.getItem("osr.player.volume");
+  if (raw === null) return 80;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 80;
 }
 
 function loadClickVolume() {
@@ -126,6 +133,8 @@ const playerState = {
   loop: localStorage.getItem("osr.player.loop") === "on",
   click: localStorage.getItem("osr.player.click") === "on",
   clickVolume: loadClickVolume(),
+  instrument: localStorage.getItem("osr.player.instrument") || "auto",
+  volume: loadInstrumentVolume(),
   status: "stopped",
   parsed: null,
   songId: null,
@@ -133,6 +142,13 @@ const playerState = {
   loopEnd: 0,
   tempoSongId: null,
 };
+
+function playerInstrument(parsed) {
+  if (playerState.instrument === "auto") {
+    return parsed?.kind === "score" ? "piano" : "guitar";
+  }
+  return playerState.instrument === "piano" ? "piano" : "guitar";
+}
 
 let playerTicker = null;
 
@@ -1396,6 +1412,25 @@ function playerBar(song = null) {
                value="${playerState.clickVolume}" aria-label="Click volume" />
         <span class="click-volume-value dim" id="player-click-volume-value">${playerState.clickVolume}%</span>
       </span>
+      <label class="pill-select player-instrument">Sound
+        <select id="player-instrument" aria-label="Playback instrument">
+          ${[
+            ["auto", "Auto"],
+            ["piano", "Piano"],
+            ["guitar", "Guitar"],
+          ]
+            .map(
+              ([value, label]) =>
+                `<option value="${value}" ${playerState.instrument === value ? "selected" : ""}>${label}</option>`,
+            )
+            .join("")}
+        </select>
+      </label>
+      <span class="click-volume-wrap player-volume-wrap" title="Instrument volume">
+        <input class="click-volume" id="player-volume" type="range" min="0" max="100" step="1"
+               value="${playerState.volume}" aria-label="Instrument volume" />
+        <span class="click-volume-value dim" id="player-volume-value">${playerState.volume}%</span>
+      </span>
       <button class="pill ${playerState.loop ? "is-on" : ""}" id="player-loop" aria-pressed="${playerState.loop}">Loop</button>
       <button class="pill sq loop-mark" id="loop-a" title="Set loop start at the playhead" aria-label="Set loop start">A</button>
       <button class="pill sq loop-mark" id="loop-b" title="Set loop end at the playhead" aria-label="Set loop end">B</button>
@@ -1991,6 +2026,8 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
   tabPlayer.load(parsed, { bpm: playerState.bpm });
   tabPlayer.click = playerState.click;
   tabPlayer.clickVolume = playerState.clickVolume / 100;
+  tabPlayer.setInstrument(playerInstrument(parsed));
+  tabPlayer.setInstrumentVolume(playerState.volume / 100);
   tabPlayer.position = from;
   tabPlayer.loopStart = playerState.loop ? playerState.loopStart : 0;
   tabPlayer.loopEnd = playerState.loop ? playerState.loopEnd : 0;
@@ -1999,6 +2036,8 @@ async function startPlayer(song, { from = 0, fraction = null } = {}) {
     loop: playerState.loop,
     click: playerState.click,
     clickVolume: playerState.clickVolume / 100,
+    instrument: tabPlayer.instrument,
+    instrumentVolume: playerState.volume / 100,
     onLine: highlightRange,
     onState: (status) => {
       if (status === "ended" || status === "stopped" || status === "paused") {
@@ -2028,7 +2067,13 @@ async function togglePlayer(song) {
     stopTicker();
     playerState.status = "paused";
   } else if (playerState.status === "paused") {
-    await tabPlayer.resume({ loop: playerState.loop, click: playerState.click, clickVolume: playerState.clickVolume / 100 });
+    await tabPlayer.resume({
+      loop: playerState.loop,
+      click: playerState.click,
+      clickVolume: playerState.clickVolume / 100,
+      instrument: tabPlayer.instrument,
+      instrumentVolume: playerState.volume / 100,
+    });
     playerState.status = "playing";
     startTicker();
   } else {
@@ -2089,6 +2134,31 @@ function wirePlayer(song) {
     };
     clickVolume.addEventListener("input", applyClickVolume);
     tabPlayer.setClickVolume(playerState.clickVolume / 100);
+  }
+
+  const instrumentSelect = document.getElementById("player-instrument");
+  if (instrumentSelect) {
+    instrumentSelect.value = playerState.instrument;
+    instrumentSelect.addEventListener("change", () => {
+      playerState.instrument = instrumentSelect.value;
+      localStorage.setItem("osr.player.instrument", playerState.instrument);
+      tabPlayer.setInstrument(playerInstrument(playerState.parsed));
+      if (playerState.status === "playing") seekPlayer(song, tabPlayer.elapsed());
+    });
+  }
+
+  const volume = document.getElementById("player-volume");
+  if (volume) {
+    const applyVolume = () => {
+      const value = Math.max(0, Math.min(100, Number(volume.value) || 0));
+      playerState.volume = value;
+      localStorage.setItem("osr.player.volume", String(value));
+      tabPlayer.setInstrumentVolume(value / 100);
+      const label = document.getElementById("player-volume-value");
+      if (label) label.textContent = `${value}%`;
+    };
+    volume.addEventListener("input", applyVolume);
+    tabPlayer.setInstrumentVolume(playerState.volume / 100);
   }
 
   const loopButton = document.getElementById("player-loop");

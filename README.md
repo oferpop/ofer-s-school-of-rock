@@ -62,6 +62,11 @@ The app also runs on any static host with **guest mode only**: without
 - **Save** to My tabs (localStorage), **Export .txt**, **Print / PDF**
 - **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
+- **Sound** — choose Auto, Piano or Guitar. Auto plays imported scores with a
+  synthesised piano (two detuned harmonic oscillators per note, fast attack and
+  long decay) and tabs/chord charts with the Karplus-Strong guitar; the choice
+  is remembered. A separate volume slider (0–100%, default 80%) sets the
+  instrument level without touching the click or count-in
 - **Click** — a metronome click on every beat while the player runs, accented
   on the bar's first beat and aligned with the score/tab tempo. Toggle it from
   the player bar; the choice is remembered. A volume slider sits next to the
