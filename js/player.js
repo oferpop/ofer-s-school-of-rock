@@ -8,7 +8,7 @@ import {
   chordTokensByLine,
   transposeChord,
   simplifyChord,
-} from "./chords.js?v=20261112t";
+} from "./chords.js?v=20261112v";
 
 const NOTE_PC = {
   C: 0, "C#": 1, Db: 1, D: 2, "D#": 3, Eb: 3, E: 4, F: 5,
@@ -53,12 +53,14 @@ function chordNotes(token) {
   return [...new Set(notes)];
 }
 
-const LABELED_TAB = /^[A-Ga-g]\|/;
-const UG_ROW = /^[0-9|\-/\\~hpbxrvt<>()\s]+$/i;
+const LABELED_TAB = /^\s*(?:[A-Ga-g][#b]?|[1-9])\s*\|/;
+// Letters are techniques (h/p/b/r/v/t/x), not words. `^`, `+`, `*`, `$`, `@`
+// appear in real tabs for bends, harmonics and pick noise.
+const UG_ROW = /^[0-9|\-/\\~hpbxrvt<>()^*+$@%\s]+$/i;
 
 function isUgRow(line) {
   const text = line.trim();
-  return text.length >= 8 && /[-|]/.test(text) && UG_ROW.test(text);
+  return text.length >= 6 && /[-|]/.test(text) && UG_ROW.test(text);
 }
 
 /**
@@ -79,15 +81,16 @@ export function tabBlockEnd(lines, start) {
   while (end + 1 < lines.length && isUgRow(lines[end + 1])) end += 1;
   const rows = lines.slice(start, end + 1);
   const count = rows.length;
-  if (count < 4 || count > 6) return -1;
+  // 4- to 8-string instruments (guitar, 7/8-string, bass) are all tablature.
+  if (count < 4 || count > 12) return -1;
 
   const lengths = rows.map((row) => row.trim().length);
-  if (Math.max(...lengths) - Math.min(...lengths) > 2) return -1;
+  if (Math.max(...lengths) - Math.min(...lengths) > 3) return -1;
   if (!rows.some((row) => /\d/.test(row))) return -1;
   return end;
 }
 
-const TAB_LINE = /^[A-Ga-g]\|/;
+const TAB_LINE = /^\s*(?:[A-Ga-g][#b]?|[1-9])\s*\|/;
 // A fret, optionally followed by a technique and its target fret: 7b9, 7b(9),
 // 7/9, 9\7, 7h9, 7p9, 7~.
 const TAB_TOKEN = /(\d+)(?:[ ]*([bhp/\\~^vV])[ ]*\(?(\d+)?\)?)?(?:[ ]*r[ ]*\(?(\d+)?\)?)?[ ]*(~*[vV]*)/;
@@ -205,9 +208,70 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
     i = block.end;
   }
 
+  const tokensByLine = chordTokensByLine(song.body);
+
+  // Measure each block once: its column count decides how long it occupies the
+  // timeline, so chord sections before and after it stay in order.
+  for (const block of tabBlocks) {
+    const rows = [];
+    for (let i = block.start; i <= block.end; i++) {
+      const raw = lines[i].trim();
+      const labeled = LABELED_TAB.test(raw);
+      rows.push(labeled ? raw.slice(raw.indexOf("|") + 1) : raw);
+    }
+    block.columns = Math.max(1, ...rows.map((row) => row.replace(/\|/g, "").length));
+  }
+
+  // A section is the text between [headers]. Inside a section that has
+  // tablature the tab wins; a section without tablature plays as chords. That
+  // keeps a solo in the middle of a chord sheet in its place instead of
+  // dropping it and jumping straight to the next chord line.
+  const sectionOf = new Array(lines.length).fill(0);
+  let section = 0;
+  for (let i = 0; i < lines.length; i++) {
+    if (i > 0 && /^\[.*\]$/.test(lines[i].trim())) section += 1;
+    sectionOf[i] = section;
+  }
+  const sectionHasTab = new Set();
+  for (const block of tabBlocks) sectionHasTab.add(sectionOf[block.start]);
+
+  const blockTimes = new Map();
+  const chordPlans = [];
+  let timeline = 0;
+  for (let i = 0; i < lines.length; ) {
+    const block = tabBlocks.find((candidate) => candidate.start === i);
+    if (block) {
+      blockTimes.set(i, timeline);
+      timeline += block.columns * step;
+      i = block.end + 1;
+      continue;
+    }
+    const trimmed = lines[i].trim();
+    const chords = (tokensByLine[i] || []).filter((token) => parseChord(token));
+    if (
+      chords.length &&
+      !sectionHasTab.has(sectionOf[i]) &&
+      !TAB_LINE.test(trimmed) &&
+      !/^\[.*\]$/.test(trimmed)
+    ) {
+      const barDelimited = trimmed.includes("|");
+      const bars = barDelimited
+        ? trimmed
+            .split("|")
+            .map((part) => part.trim().split(/\s+/).filter((word) => word && parseChord(word)))
+        : null;
+      const barsUsed = barDelimited ? bars.filter((bar) => bar.length).length : chords.length;
+      if (barsUsed) {
+        chordPlans.push({ index: i, time: timeline, barDelimited, bars, chords });
+        timeline += barsUsed * beat * 4;
+      }
+    }
+    i += 1;
+  }
+
   if (tabBlocks.length) {
-    let timeOffset = 0;
     for (const [blockIndex, block] of tabBlocks.entries()) {
+      const timeOffset = blockTimes.get(block.start) || 0;
       const previousEnd = blockIndex > 0 ? tabBlocks[blockIndex - 1].end + 1 : 0;
       const annotations = parseBendAnnotations(lines.slice(previousEnd, block.start));
 
@@ -215,7 +279,10 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       for (let i = block.start; i <= block.end; i++) {
         const raw = lines[i].trim();
         const labeled = LABELED_TAB.test(raw);
-        rows.push({ body: labeled ? raw.slice(2) : raw, letter: labeled ? raw[0] : null });
+        rows.push({
+          body: labeled ? raw.slice(raw.indexOf("|") + 1) : raw,
+          letter: labeled ? raw[0] : null,
+        });
       }
       const columns = new Map();
       rows.forEach((row, rowIndex) => {
@@ -357,12 +424,13 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
         }
       });
 
-      // Consecutive tab blocks play one after another, never on top of each other.
-      timeOffset += blockColumns * step;
+      // Each block already has its place on the shared timeline.
     }
-  } else {
-    const tokensByLine = chordTokensByLine(song.body);
-    let time = 0;
+  }
+
+  // Chord sections that do not contain tablature.
+  for (const plan of chordPlans) {
+    let time = plan.time;
     const emitChord = (token, index, length) => {
       let chord = token;
       if (transpose) chord = transposeChord(chord, transpose, flats);
@@ -381,28 +449,16 @@ export function parseSong(song, { bpm = 100, transpose = 0, flats = false, simpl
       time += length;
     };
 
-    lines.forEach((line, index) => {
-      const trimmed = line.trim();
-      if (!trimmed || TAB_LINE.test(trimmed) || /^\[.*\]$/.test(trimmed)) return;
-      const chords = (tokensByLine[index] || []).filter((token) => parseChord(token));
-      if (!chords.length) return;
-
-      // A bar-delimited line (generated chord charts) splits the bar between
-      // its chords; a plain chord line keeps one chord per bar.
-      if (line.includes("|")) {
-        const bars = line
-          .split("|")
-          .map((part) => part.trim().split(/\s+/).filter((word) => word && parseChord(word)));
-        for (const bar of bars) {
-          if (!bar.length) continue;
-          const length = (beat * 4) / bar.length;
-          for (const token of bar) emitChord(token, index, length);
-        }
-        return;
+    if (plan.barDelimited) {
+      // A bar-delimited line splits the bar between its chords.
+      for (const bar of plan.bars) {
+        if (!bar.length) continue;
+        const length = (beat * 4) / bar.length;
+        for (const token of bar) emitChord(token, plan.index, length);
       }
-
-      for (const token of chords) emitChord(token, index, beat * 4);
-    });
+    } else {
+      for (const token of plan.chords) emitChord(token, plan.index, beat * 4);
+    }
   }
 
   events.sort((a, b) => a.time - b.time);

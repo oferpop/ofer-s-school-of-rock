@@ -63,7 +63,10 @@ The app also runs on any static host with **guest mode only**: without
 - **Display modes** — Tab (ASCII), Notes (staff notation) or Both; the melody is
   rendered on a treble staff with clefs, barlines, accidentals and ledger lines
 - **Play tab** — plays what is written: ASCII tablature note by note, or the
-  chord lines one bar each, with synthesized plucks, count-in and loop. Every
+  chord lines one bar each, with synthesized plucks, count-in and loop. In a
+  mixed sheet each `[section]` keeps its place: a section with tablature plays
+  the tab and a section without it plays its chords, so a solo in the middle of
+  a chord sheet is not skipped. Every
   song opens at its own tempo (the catalog ships the original BPM; imports read
   `Tempo: 120` from the pasted text or use the field).
   Bends (`7b9`), bend-and-release (`7b9r7`), slides (`7/9`, `9\7`),
@@ -184,9 +187,10 @@ The app also runs on any static host with **guest mode only**: without
 - Paste any chord sheet or ASCII tab, give it a title, artist, key, tuning and
   capo, and it opens in the full reader — transpose, diagrams, simplify,
   autoscroll and print all work on it
-- Labelled tablature (`e|--0--`) and unlabelled Ultimate Guitar style blocks
-  (4–6 numeric rows) are recognised as tab, so the player and the Notes view
-  work on pasted tabs too
+- Labelled tablature (`e|--0--`, also `e |`, flats like `Eb|` and numbered
+  strings) and unlabelled Ultimate Guitar style blocks (4–12 numeric rows) are
+  recognised as tab, including `^ + * $ @ %` techniques, so the player and the
+  Notes view work on pasted tabs too
 - **Album tabs** with `number N` markers (and an optional `1.title` list at the
   top) can be split into one song per track: the import builds the songs, fills
   in the track names, detects open tunings per track and puts them in a playlist
@@ -263,8 +267,9 @@ it stays in your browser.
 `js/player.js`
 - Parses a sheet into timed events: contiguous ASCII tablature blocks are read
   column by column (one character ≈ a 16th note, two-digit frets supported) and
-  each column becomes a chord of MIDI notes from the song's tuning; otherwise
-  the chord lines play one bar per chord, honouring transpose/flats/simplify
+  each column becomes a chord of MIDI notes from the song's tuning. Sections
+  with tablature play the tab; sections without it play their chord lines one
+  bar per chord, all on one timeline, honouring transpose/flats/simplify
 - Karplus-Strong plucks (noise burst into a damped delay line), scheduled ahead
   on the Web Audio clock; the transport tracks position, pause/resume, loop and
   a four-click count-in

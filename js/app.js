@@ -1,4 +1,4 @@
-import { songs, byId, versionsOf } from "./data.js?v=20261112t";
+import { songs, byId, versionsOf } from "./data.js?v=20261112v";
 import {
   isChordToken,
   chordTokensByLine,
@@ -6,7 +6,7 @@ import {
   simplifyChord,
   diagramSVG,
   uniqueChords,
-} from "./chords.js?v=20261112t";
+} from "./chords.js?v=20261112v";
 import {
   loadPlaylists,
   persistPlaylists,
@@ -29,7 +29,7 @@ import {
   downloadText,
   buildBackup,
   readBackup,
-} from "./pro.js?v=20261112t";
+} from "./pro.js?v=20261112v";
 
 import {
   probe,
@@ -38,12 +38,12 @@ import {
   logout as apiLogout,
   pullState,
   pushState,
-} from "./auth.js?v=20261112t";
-import { listComments, addComment, deleteComment } from "./comments.js?v=20261112t";
-import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112t";
-import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112t";
-import { renderStaff } from "./staff.js?v=20261112t";
-import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112t";
+} from "./auth.js?v=20261112v";
+import { listComments, addComment, deleteComment } from "./comments.js?v=20261112v";
+import { Tuner, TUNINGS, midiToNote } from "./tuner.js?v=20261112v";
+import { parseSong, TabPlayer, countIn, tabBlockEnd, matchesTargets } from "./player.js?v=20261112v";
+import { renderStaff } from "./staff.js?v=20261112v";
+import { chordsToChart, detectNotesAsync, estimateChordsAsync, estimateTempo, notesToTab } from "./transcribe.js?v=20261112v";
 
 const SAVED_KEY = "ugclone.saved.v1";
 const IMPORTED_KEY = "osr.imported.v1";
